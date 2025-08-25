@@ -1,0 +1,216 @@
+# Inference Configuration for QuantStream Analytics Platform
+
+inference:
+  # Real-time Inference Settings
+  realtime:
+    target_latency_ms: 50
+    max_latency_ms: 100
+    batch_size: 1
+    queue_timeout_ms: 10
+    
+  # Batch Inference Settings
+  batch:
+    batch_size: 1000
+    max_batch_wait_time_ms: 5000
+    parallel_processing: true
+    num_workers: 4
+    
+  # Model Serving
+  model_serving:
+    # Model loading
+    model_cache_size: 5  # Number of models to keep in memory
+    model_warmup_enabled: true
+    model_reload_interval_minutes: 60
+    
+    # Performance optimization
+    optimization:
+      quantization_enabled: false
+      onnx_runtime_enabled: false
+      tensorrt_enabled: false
+      
+    # Caching
+    prediction_cache:
+      enabled: true
+      ttl_seconds: 300
+      max_size_mb: 1024
+      
+    # Fallback models
+    fallback:
+      enabled: true
+      fallback_model: "statistical_zscore"
+      fallback_threshold_ms: 75
+
+  # API Configuration
+  api:
+    host: "0.0.0.0"
+    port: 8080
+    workers: 4
+    timeout: 30
+    keep_alive: 2
+    
+    # Rate limiting
+    rate_limiting:
+      enabled: true
+      requests_per_second: 1000
+      burst_size: 100
+      
+    # Authentication
+    authentication:
+      enabled: false
+      api_key_required: false
+      jwt_enabled: false
+      
+    # CORS
+    cors:
+      enabled: true
+      allowed_origins: ["*"]
+      allowed_methods: ["GET", "POST"]
+
+  # Load Balancing
+  load_balancing:
+    strategy: "round_robin"  # Options: round_robin, least_connections, weighted
+    health_check_interval_seconds: 30
+    unhealthy_threshold: 3
+    
+    # Circuit breaker
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 5
+      recovery_timeout_seconds: 60
+      half_open_max_calls: 3
+
+  # Alert Management
+  alerts:
+    # Alert generation
+    generation:
+      enabled: true
+      severity_levels: ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+      aggregation_window_seconds: 60
+      
+    # Alert thresholds
+    thresholds:
+      anomaly_score: 0.8
+      confidence_threshold: 0.7
+      consecutive_anomalies: 3
+      
+    # Alert routing
+    routing:
+      # Webhook notifications
+      webhooks:
+        - name: "slack_alerts"
+          url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+          enabled: false
+          severity_filter: ["HIGH", "CRITICAL"]
+          
+        - name: "email_alerts"
+          url: "https://api.sendgrid.com/v3/mail/send"
+          enabled: false
+          severity_filter: ["CRITICAL"]
+      
+      # Message queue
+      message_queue:
+        enabled: true
+        topic: "quantstream_alerts"
+        broker: "kafka://localhost:9092"
+        
+    # Alert suppression
+    suppression:
+      enabled: true
+      duplicate_window_minutes: 5
+      max_alerts_per_minute: 10
+
+# Monitoring and Observability
+monitoring:
+  # Metrics collection
+  metrics:
+    enabled: true
+    collection_interval_seconds: 10
+    
+    # Custom metrics
+    custom_metrics:
+      - "inference_latency_p99"
+      - "prediction_accuracy"
+      - "model_drift_score"
+      - "feature_drift_score"
+      - "alert_volume"
+      
+  # Logging
+  logging:
+    level: "INFO"
+    format: "json"
+    include_request_id: true
+    log_predictions: true
+    log_features: false  # Set to true for debugging
+    
+  # Health checks
+  health_checks:
+    enabled: true
+    endpoint: "/health"
+    checks:
+      - "model_loaded"
+      - "feature_pipeline_ready"
+      - "database_connection"
+      - "cache_connection"
+      
+  # Performance monitoring
+  performance:
+    profiling_enabled: false
+    memory_monitoring: true
+    cpu_monitoring: true
+    
+# Feature Store Integration
+feature_store:
+  enabled: true
+  provider: "feast"  # Options: feast, tecton, hopsworks
+  
+  # Real-time features
+  realtime_features:
+    endpoint: "http://feature-store:8080"
+    timeout_ms: 20
+    cache_enabled: true
+    
+  # Offline features (for batch scoring)
+  offline_features:
+    endpoint: "http://feature-store:8081"
+    timeout_ms: 5000
+
+# Data Validation
+data_validation:
+  enabled: true
+  
+  # Input validation
+  input_validation:
+    schema_validation: true
+    range_checks: true
+    null_checks: true
+    
+  # Feature validation
+  feature_validation:
+    drift_detection: true
+    outlier_detection: true
+    completeness_checks: true
+    
+  # Prediction validation
+  prediction_validation:
+    confidence_bounds: [0.0, 1.0]
+    sanity_checks: true
+
+# Security
+security:
+  # Input sanitization
+  input_sanitization:
+    enabled: true
+    sql_injection_protection: true
+    xss_protection: true
+    
+  # Data privacy
+  privacy:
+    pii_detection: false
+    data_masking: false
+    audit_logging: true
+    
+  # Network security
+  network:
+    tls_enabled: false
+    certificate_path: null
+    private_key_path: null

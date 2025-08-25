@@ -1,0 +1,443 @@
+# Technical Indicators Catalog
+# Comprehensive catalog of available technical indicators with metadata
+
+indicators:
+  
+  # Trend Indicators
+  trend:
+    sma:
+      name: "Simple Moving Average"
+      description: "Average price over a specified number of periods"
+      category: "trend" 
+      data_requirements: ["close"]
+      parameters:
+        period:
+          type: "integer"
+          default: 20
+          min: 2
+          max: 500
+          description: "Number of periods for the moving average"
+      output_type: "float"
+      window_size_formula: "period"
+      calculation: "sum(close_prices[t-period+1:t]) / period"
+      
+    ema:
+      name: "Exponential Moving Average"
+      description: "Weighted moving average giving more weight to recent prices"
+      category: "trend"
+      data_requirements: ["close"]
+      parameters:
+        period:
+          type: "integer" 
+          default: 20
+          min: 2
+          max: 500
+          description: "Number of periods for the EMA"
+      output_type: "float"
+      window_size_formula: "period * 2"
+      calculation: "alpha * price + (1 - alpha) * EMA_prev, where alpha = 2/(period+1)"
+      
+    wma:
+      name: "Weighted Moving Average"
+      description: "Moving average with linearly decreasing weights"
+      category: "trend"
+      data_requirements: ["close"]
+      parameters:
+        period:
+          type: "integer"
+          default: 20
+          min: 2
+          max: 200
+          description: "Number of periods for the WMA"
+      output_type: "float"
+      window_size_formula: "period"
+      
+  # Momentum Indicators  
+  momentum:
+    rsi:
+      name: "Relative Strength Index"
+      description: "Momentum oscillator measuring speed and change of price movements"
+      category: "momentum"
+      data_requirements: ["close"]
+      parameters:
+        period:
+          type: "integer"
+          default: 14
+          min: 2
+          max: 100
+          description: "Number of periods for RSI calculation"
+      output_type: "float"
+      output_range: [0, 100]
+      window_size_formula: "period + 1"
+      calculation: "100 - (100 / (1 + RS)), where RS = avg_gain / avg_loss"
+      interpretation:
+        overbought_threshold: 70
+        oversold_threshold: 30
+        
+    macd:
+      name: "MACD"
+      description: "Moving Average Convergence Divergence trend-following momentum indicator"
+      category: "momentum"
+      data_requirements: ["close"]
+      parameters:
+        fast_period:
+          type: "integer"
+          default: 12
+          min: 2
+          max: 50
+          description: "Fast EMA period"
+        slow_period:
+          type: "integer"
+          default: 26
+          min: 10
+          max: 100
+          description: "Slow EMA period"
+        signal_period:
+          type: "integer"
+          default: 9
+          min: 2
+          max: 50
+          description: "Signal line EMA period"
+      outputs:
+        macd_line: "float"
+        signal_line: "float"
+        histogram: "float"
+      window_size_formula: "max(slow_period, fast_period) + signal_period"
+      calculation: "MACD = EMA(fast) - EMA(slow); Signal = EMA(MACD, signal_period)"
+      
+    stochastic:
+      name: "Stochastic Oscillator"
+      description: "Momentum indicator comparing closing price to price range over time"
+      category: "momentum"
+      data_requirements: ["high", "low", "close"]
+      parameters:
+        k_period:
+          type: "integer"
+          default: 14
+          min: 2
+          max: 100
+          description: "Number of periods for %K calculation"
+        d_period:
+          type: "integer"
+          default: 3
+          min: 1
+          max: 20
+          description: "Number of periods for %D smoothing"
+      outputs:
+        k_percent: "float"
+        d_percent: "float"
+      output_range: [0, 100]
+      window_size_formula: "k_period + d_period"
+      calculation: "%K = 100 * (close - low_min) / (high_max - low_min)"
+      interpretation:
+        overbought_threshold: 80
+        oversold_threshold: 20
+        
+  # Volatility Indicators
+  volatility:
+    bollinger_bands:
+      name: "Bollinger Bands"
+      description: "Volatility bands placed above and below a moving average"
+      category: "volatility"
+      data_requirements: ["close"]
+      parameters:
+        period:
+          type: "integer"
+          default: 20
+          min: 5
+          max: 100
+          description: "Number of periods for moving average and standard deviation"
+        std_dev:
+          type: "float"
+          default: 2.0
+          min: 0.5
+          max: 4.0
+          description: "Standard deviation multiplier"
+      outputs:
+        upper_band: "float"
+        middle_band: "float"
+        lower_band: "float"
+      window_size_formula: "period"
+      calculation: "Middle = SMA(period); Upper/Lower = Middle ± (std_dev * STD(period))"
+      
+    atr:
+      name: "Average True Range"
+      description: "Volatility indicator measuring the degree of price volatility"
+      category: "volatility"
+      data_requirements: ["high", "low", "close"]
+      parameters:
+        period:
+          type: "integer"
+          default: 14
+          min: 1
+          max: 100
+          description: "Number of periods for ATR calculation"
+      output_type: "float"
+      window_size_formula: "period + 1"
+      calculation: "ATR = SMA(TrueRange, period) where TR = max(H-L, |H-C_prev|, |L-C_prev|)"
+      
+    keltner_channels:
+      name: "Keltner Channels"
+      description: "Volatility-based envelopes set above and below an EMA"
+      category: "volatility"  
+      data_requirements: ["high", "low", "close"]
+      parameters:
+        period:
+          type: "integer"
+          default: 20
+          min: 5
+          max: 100
+          description: "EMA period for center line"
+        atr_period:
+          type: "integer"
+          default: 10
+          min: 1
+          max: 50
+          description: "ATR period for channel width"
+        multiplier:
+          type: "float"
+          default: 2.0
+          min: 0.5
+          max: 5.0
+          description: "ATR multiplier for channel distance"
+      outputs:
+        upper_channel: "float"
+        center_line: "float"
+        lower_channel: "float"
+      window_size_formula: "max(period, atr_period + 1)"
+      
+  # Volume Indicators
+  volume:
+    obv:
+      name: "On-Balance Volume"
+      description: "Volume-based indicator relating volume to price change"
+      category: "volume"
+      data_requirements: ["close", "volume"]
+      parameters: {}
+      output_type: "float"
+      window_size_formula: "1"  # Cumulative indicator
+      calculation: "OBV += volume if close > close_prev else OBV -= volume"
+      
+    vwap:
+      name: "Volume Weighted Average Price"
+      description: "Trading benchmark giving average price weighted by volume"
+      category: "volume"
+      data_requirements: ["high", "low", "close", "volume"] 
+      parameters: {}
+      output_type: "float"
+      window_size_formula: "1"  # Cumulative indicator
+      calculation: "VWAP = sum(typical_price * volume) / sum(volume)"
+      
+    ad_line:
+      name: "Accumulation/Distribution Line"
+      description: "Volume indicator measuring buying and selling pressure"
+      category: "volume"
+      data_requirements: ["high", "low", "close", "volume"]
+      parameters: {}
+      output_type: "float"
+      window_size_formula: "1"  # Cumulative indicator
+      calculation: "A/D += money_flow_multiplier * volume"
+      
+    cmf:
+      name: "Chaikin Money Flow"
+      description: "Volume-weighted average of A/D line over a period"
+      category: "volume"
+      data_requirements: ["high", "low", "close", "volume"]
+      parameters:
+        period:
+          type: "integer"
+          default: 20
+          min: 5
+          max: 100
+          description: "Number of periods for CMF calculation"
+      output_type: "float"
+      output_range: [-1.0, 1.0]
+      window_size_formula: "period"
+      
+  # Advanced Indicators
+  advanced:
+    ichimoku:
+      name: "Ichimoku Cloud"
+      description: "Comprehensive trend and momentum indicator system"
+      category: "trend"
+      data_requirements: ["high", "low", "close"]
+      parameters:
+        conversion_period:
+          type: "integer"
+          default: 9
+          min: 5
+          max: 50
+          description: "Conversion line (Tenkan-sen) period"
+        base_period:
+          type: "integer"
+          default: 26
+          min: 10
+          max: 100
+          description: "Base line (Kijun-sen) period"
+        leading_span_b_period:
+          type: "integer"
+          default: 52
+          min: 20
+          max: 200
+          description: "Leading Span B period"
+        displacement:
+          type: "integer"
+          default: 26
+          min: 10
+          max: 100
+          description: "Displacement for leading spans"
+      outputs:
+        conversion_line: "float"
+        base_line: "float"
+        leading_span_a: "float"
+        leading_span_b: "float"
+        lagging_span: "float"
+      window_size_formula: "leading_span_b_period + displacement"
+      
+    parabolic_sar:
+      name: "Parabolic SAR"
+      description: "Trend-following indicator providing stop and reverse points"
+      category: "trend"
+      data_requirements: ["high", "low"]
+      parameters:
+        af_start:
+          type: "float"
+          default: 0.02
+          min: 0.01
+          max: 0.1
+          description: "Starting acceleration factor"
+        af_increment:
+          type: "float"
+          default: 0.02
+          min: 0.01
+          max: 0.1  
+          description: "Acceleration factor increment"
+        af_max:
+          type: "float"
+          default: 0.2
+          min: 0.1
+          max: 1.0
+          description: "Maximum acceleration factor"
+      output_type: "float"
+      window_size_formula: "dynamic"  # Adaptive based on trend changes
+      
+    adx:
+      name: "Average Directional Index"
+      description: "Trend strength indicator measuring directional movement"
+      category: "trend"
+      data_requirements: ["high", "low", "close"]
+      parameters:
+        period:
+          type: "integer"
+          default: 14
+          min: 5
+          max: 50
+          description: "Number of periods for ADX calculation"
+      outputs:
+        adx: "float"
+        plus_di: "float"
+        minus_di: "float"
+      output_range: [0, 100]
+      window_size_formula: "period * 2"  # Requires smoothing
+      interpretation:
+        trend_strength:
+          strong: 25
+          very_strong: 50
+          
+    williams_r:
+      name: "Williams %R"
+      description: "Momentum indicator measuring overbought/oversold levels"
+      category: "momentum"
+      data_requirements: ["high", "low", "close"]
+      parameters:
+        period:
+          type: "integer"
+          default: 14
+          min: 5
+          max: 100
+          description: "Number of periods for calculation"
+      output_type: "float"
+      output_range: [-100, 0]
+      window_size_formula: "period"
+      interpretation:
+        overbought_threshold: -20
+        oversold_threshold: -80
+
+# Feature Set Definitions
+feature_sets:
+  basic_trend:
+    name: "Basic Trend Analysis"
+    indicators: ["sma_20", "ema_50", "sma_200"]
+    description: "Essential trend-following indicators for market direction"
+    use_cases: ["trend_identification", "support_resistance"]
+    
+  momentum_suite:
+    name: "Momentum Analysis Suite"  
+    indicators: ["rsi_14", "macd", "stochastic"]
+    description: "Comprehensive momentum indicators for entry/exit signals"
+    use_cases: ["signal_generation", "divergence_analysis"]
+    
+  volatility_package:
+    name: "Volatility Analysis Package"
+    indicators: ["bollinger_bands", "atr_14", "keltner_channels"]
+    description: "Volatility indicators for risk assessment and position sizing"
+    use_cases: ["risk_management", "breakout_detection"]
+    
+  volume_analysis:
+    name: "Volume Analysis Tools"
+    indicators: ["obv", "vwap", "ad_line", "cmf_20"]
+    description: "Volume-based indicators for confirmation and strength measurement"
+    use_cases: ["trend_confirmation", "accumulation_distribution"]
+    
+  complete_technical:
+    name: "Complete Technical Analysis"
+    indicators: [
+      "sma_20", "ema_50", "sma_200",
+      "rsi_14", "macd", "stochastic", 
+      "bollinger_bands", "atr_14",
+      "obv", "vwap", "parabolic_sar"
+    ]
+    description: "Comprehensive technical analysis with all major indicator categories"
+    use_cases: ["full_technical_analysis", "algorithmic_trading", "backtesting"]
+
+# Data Quality Rules
+quality_rules:
+  price_data:
+    - rule_type: "range_check"
+      field: "close"
+      min_value: 0.0001  # Minimum valid price
+      max_value: 1000000  # Maximum reasonable price
+    - rule_type: "sequence_check"
+      field: "timestamp"
+      order: "ascending"
+    - rule_type: "completeness_check"
+      field: "close"
+      min_completeness: 0.95
+      
+  volume_data:
+    - rule_type: "range_check" 
+      field: "volume"
+      min_value: 0
+    - rule_type: "completeness_check"
+      field: "volume"
+      min_completeness: 0.90
+      
+  ohlc_data:
+    - rule_type: "consistency_check"
+      fields: ["open", "high", "low", "close"]
+      rule: "low <= min(open, close) and max(open, close) <= high"
+
+# Performance Benchmarks
+performance_benchmarks:
+  computation_time:
+    simple_indicators: 1.0   # milliseconds per 1000 records
+    complex_indicators: 5.0  # milliseconds per 1000 records
+    batch_processing: 50.0   # milliseconds per 1000 records
+    
+  memory_usage:
+    simple_indicators: 1.0   # MB per 1000 records
+    complex_indicators: 2.0  # MB per 1000 records
+    
+  accuracy_requirements:
+    float_precision: 1e-6
+    percentage_indicators: 1e-4

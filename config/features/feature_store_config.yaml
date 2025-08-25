@@ -1,0 +1,219 @@
+# Feature Store Configuration
+# QuantStream Analytics Platform Feature Store
+
+# Redis Configuration
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  password: null
+  pool_size: 20
+  socket_timeout: 30
+  socket_connect_timeout: 30
+  retry_on_timeout: true
+
+# Delta Lake Storage Configuration  
+storage:
+  path: "/data/features/delta"
+  spark:
+    app_name: "QuantStream_FeatureStore"
+    master: "local[*]"
+    sql_adaptive_enabled: true
+    sql_adaptive_coalesce_partitions: true
+    sql_adaptive_skew_join: true
+    serializer: "org.apache.spark.serializer.KryoSerializer"
+    parquet_compression: "snappy"
+    parquet_batch_size: 8192
+  optimization:
+    auto_compact: true
+    compact_interval_hours: 24
+    vacuum_retention_hours: 168  # 7 days
+    z_order_columns: ["timestamp", "_partition_date"]
+
+# Feature Registry Configuration
+registry:
+  namespace_pattern: "^[a-zA-Z][a-zA-Z0-9_]*$"
+  max_feature_id_length: 64
+  max_description_length: 1000
+  default_cache_ttl: 3600  # 1 hour
+  max_dependencies: 50
+
+# Feature Serving Configuration
+serving:
+  max_batch_size: 1000
+  response_timeout_ms: 5000
+  max_concurrent_requests: 1000
+  cache_ttl_seconds: 3600
+  latency_threshold_ms: 50.0
+  cache_hit_rate_threshold: 0.95
+  error_rate_threshold: 0.01
+  
+  # Rate Limiting
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 6000
+    burst_size: 100
+    per_entity_limits: true
+    per_entity_rpm: 600
+
+# Performance Monitoring Thresholds
+monitoring:
+  thresholds:
+    # Latency thresholds (milliseconds)
+    latency_p95_warning: 50.0
+    latency_p95_error: 100.0
+    latency_p99_critical: 500.0
+    
+    # Throughput thresholds (requests per second)
+    throughput_min_warning: 100.0
+    throughput_min_error: 50.0
+    
+    # Error rate thresholds (percentage)
+    error_rate_warning: 1.0
+    error_rate_error: 5.0
+    error_rate_critical: 10.0
+    
+    # Cache hit rate thresholds (percentage)
+    cache_hit_rate_warning: 90.0
+    cache_hit_rate_error: 80.0
+    
+    # Feature freshness thresholds (minutes)
+    freshness_warning: 60.0
+    freshness_error: 120.0
+    freshness_critical: 300.0
+    
+    # Resource usage thresholds (percentage)
+    memory_usage_warning: 80.0
+    memory_usage_error: 90.0
+    cpu_usage_warning: 80.0
+    cpu_usage_error: 90.0
+  
+  # Metric retention and collection
+  metric_retention_hours: 24
+  collection_interval_seconds: 10
+  cleanup_interval_hours: 1
+
+# Data Quality Configuration
+data_quality:
+  validation:
+    enabled: true
+    min_completeness: 0.95
+    max_cardinality_ratio: 0.5
+    max_outlier_ratio: 0.05
+    min_variance_threshold: 1e-8
+    
+  # Drift Detection
+  drift_detection:
+    enabled: true
+    window_size: 1000  # Number of samples for baseline
+    significance_level: 0.05
+    methods: ["ks_test", "chi_square", "psi"]  # Population Stability Index
+    
+  # Alert Configuration
+  alerts:
+    enabled: true
+    email_notifications: false
+    webhook_url: null
+    severity_levels: ["warning", "error", "critical"]
+
+# Feature Engineering Pipeline
+pipeline:
+  # Streaming Configuration
+  streaming:
+    enabled: true
+    kafka:
+      bootstrap_servers: "localhost:9092"
+      input_topic: "market_data"
+      output_topic: "features"
+      consumer_group: "feature_store"
+      auto_offset_reset: "latest"
+      batch_size: 1000
+      
+  # Batch Processing
+  batch:
+    enabled: true
+    schedule: "0 */6 * * *"  # Every 6 hours
+    batch_size: 10000
+    parallel_jobs: 4
+    
+  # Feature Computation
+  computation:
+    timeout_seconds: 300
+    retry_attempts: 3
+    parallel_execution: true
+    memory_limit_mb: 4096
+
+# Technical Indicators Configuration
+indicators:
+  # Standard parameters for common indicators
+  default_parameters:
+    sma_periods: [10, 20, 50, 100, 200]
+    ema_periods: [12, 26, 50, 200]
+    rsi_periods: [14, 21]
+    macd:
+      fast_period: 12
+      slow_period: 26
+      signal_period: 9
+    bollinger_bands:
+      period: 20
+      std_dev: 2.0
+    stochastic:
+      k_period: 14
+      d_period: 3
+    atr_period: 14
+    
+  # Computation optimization
+  computation:
+    vectorized: true
+    chunk_size: 1000
+    cache_intermediate_results: true
+    
+  # Feature Sets
+  feature_sets:
+    momentum: ["rsi_14", "macd_line_12_26", "stoch_k_14"]
+    trend: ["sma_20", "ema_50", "bb_middle_20"]
+    volatility: ["bb_upper_20_20", "bb_lower_20_20", "atr_14"]
+    volume: ["obv", "vwap", "ad_line"]
+    
+# Security Configuration
+security:
+  authentication:
+    enabled: false  # Enable for production
+    jwt_secret: "your-jwt-secret-here"
+    jwt_expiry_hours: 24
+    
+  authorization:
+    enabled: false  # Enable for production
+    feature_access_control: true
+    
+  encryption:
+    at_rest: false  # Enable for production
+    in_transit: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    - type: "console"
+    - type: "file"
+      filename: "/var/log/quantstream/feature_store.log"
+      max_bytes: 10485760  # 10MB
+      backup_count: 5
+  
+  # Performance logging
+  performance_logging:
+    enabled: true
+    slow_request_threshold_ms: 100
+    log_request_details: false  # Set to true for debugging
+
+# Development and Testing
+development:
+  debug_mode: false
+  mock_external_services: false
+  sample_data_path: "/data/samples/"
+  
+testing:
+  use_test_redis_db: 15
+  use_test_storage_path: "/tmp/test_features"
+  parallel_test_execution: true

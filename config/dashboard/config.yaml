@@ -1,0 +1,87 @@
+# QuantStream Dashboard Configuration
+
+app:
+  name: "QuantStream Analytics Dashboard"
+  version: "1.0.0"
+  environment: "development"
+  debug: true
+  log_level: "INFO"
+
+server:
+  host: "0.0.0.0"
+  port: 8501
+  max_connections: 1000
+  timeout: 300
+
+database:
+  url: "postgresql://quantstream:password@localhost:5432/quantstream_db"
+  pool_size: 20
+  max_overflow: 50
+  echo: false
+
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  password: null
+  max_connections: 100
+  socket_timeout: 5
+  socket_connect_timeout: 5
+
+websocket:
+  host: "localhost"
+  port: 8765
+  max_connections: 1000
+  ping_interval: 20
+  ping_timeout: 10
+
+api:
+  base_url: "http://localhost:8000"
+  timeout: 30
+  retry_attempts: 3
+  rate_limit: 1000
+
+dashboard:
+  refresh_rate: 1000  # milliseconds
+  max_data_points: 10000
+  cache_duration: 60  # seconds
+  auto_refresh: true
+  
+charts:
+  default_theme: "plotly_white"
+  candlestick:
+    height: 500
+    width: 800
+  indicators:
+    bollinger_bands:
+      period: 20
+      std_dev: 2
+    rsi:
+      period: 14
+    macd:
+      fast_period: 12
+      slow_period: 26
+      signal_period: 9
+
+monitoring:
+  metrics_port: 8502
+  health_check_interval: 30
+  alert_threshold_cpu: 80
+  alert_threshold_memory: 85
+  alert_threshold_disk: 90
+
+security:
+  secret_key: "your-secret-key-here"
+  algorithm: "HS256"
+  access_token_expire_minutes: 30
+  allowed_origins: ["*"]
+  allowed_methods: ["*"]
+  allowed_headers: ["*"]
+
+features:
+  real_time_streaming: true
+  technical_indicators: true
+  anomaly_detection: true
+  portfolio_tracking: true
+  historical_analysis: true
+  mobile_responsive: true

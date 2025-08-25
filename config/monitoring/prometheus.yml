@@ -1,0 +1,63 @@
+# Prometheus Configuration for QuantStream Analytics
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # QuantStream Dashboard
+  - job_name: 'quantstream-dashboard'
+    static_configs:
+      - targets: ['localhost:8502']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # QuantStream Backend API
+  - job_name: 'quantstream-api'
+    static_configs:
+      - targets: ['localhost:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # WebSocket Server
+  - job_name: 'quantstream-websocket'
+    static_configs:
+      - targets: ['localhost:8765']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['localhost:9121']
+
+  # PostgreSQL
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['localhost:9187']
+
+  # Node Exporter for system metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['localhost:9100']
+
+  # Custom application metrics
+  - job_name: 'quantstream-custom'
+    static_configs:
+      - targets: ['localhost:8503']
+    metrics_path: '/custom-metrics'
+    scrape_interval: 10s

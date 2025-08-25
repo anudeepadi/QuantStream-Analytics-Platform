@@ -1,0 +1,84 @@
+# ML Model Configurations for QuantStream Analytics Platform
+
+models:
+  isolation_forest:
+    name: "IsolationForest"
+    type: "unsupervised"
+    hyperparameters:
+      n_estimators: 100
+      max_samples: "auto"
+      contamination: 0.1
+      max_features: 1.0
+      bootstrap: false
+      random_state: 42
+    performance_thresholds:
+      min_precision: 0.8
+      min_recall: 0.7
+      max_false_positive_rate: 0.05
+
+  lstm_autoencoder:
+    name: "LSTMAutoencoder"
+    type: "unsupervised"
+    hyperparameters:
+      sequence_length: 50
+      hidden_dims: [64, 32, 16]
+      dropout_rate: 0.2
+      learning_rate: 0.001
+      batch_size: 32
+      epochs: 100
+      early_stopping_patience: 10
+    performance_thresholds:
+      max_reconstruction_error: 0.1
+      min_precision: 0.85
+      min_recall: 0.75
+
+  statistical_zscore:
+    name: "ZScoreDetector"
+    type: "statistical"
+    hyperparameters:
+      window_size: 20
+      threshold: 3.0
+      min_periods: 10
+    performance_thresholds:
+      min_precision: 0.7
+      min_recall: 0.6
+
+  statistical_iqr:
+    name: "IQRDetector"
+    type: "statistical"
+    hyperparameters:
+      window_size: 20
+      iqr_multiplier: 1.5
+      min_periods: 10
+    performance_thresholds:
+      min_precision: 0.7
+      min_recall: 0.6
+
+  ensemble:
+    name: "EnsembleDetector"
+    type: "ensemble"
+    base_models:
+      - isolation_forest
+      - lstm_autoencoder
+      - statistical_zscore
+      - statistical_iqr
+    aggregation_strategy: "weighted_vote"
+    model_weights:
+      isolation_forest: 0.3
+      lstm_autoencoder: 0.4
+      statistical_zscore: 0.15
+      statistical_iqr: 0.15
+    performance_thresholds:
+      min_precision: 0.9
+      min_recall: 0.8
+      max_false_positive_rate: 0.01
+
+# Global model settings
+global_settings:
+  random_seed: 42
+  model_versioning: true
+  auto_retrain: true
+  retrain_frequency_hours: 24
+  performance_monitoring: true
+  drift_detection: true
+  explainability: true

@@ -1,0 +1,146 @@
+# Training Pipeline Configurations for QuantStream Analytics Platform
+
+training:
+  # Data Configuration
+  data:
+    train_test_split: 0.8
+    validation_split: 0.1
+    time_series_split: true
+    min_train_samples: 10000
+    max_train_samples: 1000000
+    
+  # Training Schedule
+  schedule:
+    auto_retrain: true
+    retrain_triggers:
+      - performance_degradation: 0.05  # 5% drop in performance
+      - data_drift_score: 0.3
+      - time_based: "daily"  # Options: hourly, daily, weekly
+    
+  # Cross-validation
+  cross_validation:
+    enabled: true
+    method: "time_series_split"  # Options: kfold, time_series_split, blocked_time_series
+    n_splits: 5
+    test_size: 0.2
+
+# MLflow Configuration
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "quantstream_anomaly_detection"
+  model_registry_name: "QuantStreamAnomalyModels"
+  
+  # Experiment tracking
+  tracking:
+    log_params: true
+    log_metrics: true
+    log_artifacts: true
+    log_models: true
+    
+  # Model registry
+  registry:
+    auto_register: true
+    staging_approval_required: false
+    production_approval_required: true
+    
+  # Model deployment
+  deployment:
+    auto_deploy_staging: true
+    auto_deploy_production: false
+    deployment_strategy: "blue_green"
+
+# Hyperparameter Tuning
+hyperparameter_tuning:
+  enabled: true
+  method: "optuna"  # Options: grid_search, random_search, optuna, hyperopt
+  
+  # Optuna settings
+  optuna:
+    n_trials: 100
+    timeout_seconds: 3600
+    pruning: true
+    storage: "sqlite:///optuna_study.db"
+    
+  # Search spaces (will be model-specific)
+  search_spaces:
+    isolation_forest:
+      n_estimators: [50, 100, 200, 500]
+      contamination: [0.05, 0.1, 0.15, 0.2]
+      max_features: [0.5, 0.7, 1.0]
+      
+    lstm_autoencoder:
+      hidden_dims: [[32, 16], [64, 32], [128, 64, 32]]
+      dropout_rate: [0.1, 0.2, 0.3, 0.4]
+      learning_rate: [0.0001, 0.001, 0.01]
+      batch_size: [16, 32, 64, 128]
+
+# Distributed Training
+distributed_training:
+  enabled: false  # Enable for large datasets
+  backend: "pyspark"  # Options: pyspark, dask, ray
+  
+  # Spark configuration
+  spark:
+    app_name: "QuantStreamMLTraining"
+    master: "local[*]"
+    executor_memory: "4g"
+    driver_memory: "2g"
+    max_result_size: "1g"
+
+# Model Validation
+validation:
+  # Backtesting
+  backtesting:
+    enabled: true
+    start_date: "2023-01-01"
+    end_date: "2024-01-01"
+    walk_forward_analysis: true
+    
+  # Performance metrics
+  metrics:
+    primary_metric: "f1_score"
+    classification_metrics:
+      - "precision"
+      - "recall"
+      - "f1_score"
+      - "roc_auc"
+      - "average_precision"
+    
+    # Anomaly detection specific metrics
+    anomaly_metrics:
+      - "false_positive_rate"
+      - "detection_delay"
+      - "precision_at_k"
+      
+  # Statistical tests
+  statistical_tests:
+    enabled: true
+    significance_level: 0.05
+    tests:
+      - "kolmogorov_smirnov"
+      - "mann_whitney"
+      
+# A/B Testing
+ab_testing:
+  enabled: true
+  traffic_split: 0.5  # 50/50 split
+  test_duration_days: 7
+  success_criteria:
+    min_improvement: 0.05  # 5% improvement required
+    significance_level: 0.05
+    
+# Training Infrastructure
+infrastructure:
+  compute_resources:
+    cpu_cores: 4
+    memory_gb: 16
+    gpu_enabled: false
+    
+  storage:
+    model_artifacts_path: "/data/ml/models"
+    experiment_data_path: "/data/ml/experiments"
+    backup_enabled: true
+    
+  monitoring:
+    training_metrics_endpoint: "http://prometheus:9090"
+    alert_webhook: null

@@ -1,0 +1,148 @@
+# Feature Engineering Configurations for QuantStream Analytics Platform
+
+feature_engineering:
+  # Technical Indicators Configuration
+  technical_indicators:
+    rsi:
+      enabled: true
+      periods: [14, 21]
+      overbought_threshold: 70
+      oversold_threshold: 30
+    
+    macd:
+      enabled: true
+      fast_period: 12
+      slow_period: 26
+      signal_period: 9
+    
+    bollinger_bands:
+      enabled: true
+      period: 20
+      std_dev: 2
+      
+    sma:
+      enabled: true
+      periods: [5, 10, 20, 50, 200]
+      
+    ema:
+      enabled: true
+      periods: [12, 26, 50]
+      
+    stochastic:
+      enabled: true
+      k_period: 14
+      d_period: 3
+      
+    atr:
+      enabled: true
+      period: 14
+      
+    adx:
+      enabled: true
+      period: 14
+      
+    cci:
+      enabled: true
+      period: 20
+
+  # Statistical Features Configuration
+  statistical_features:
+    rolling_stats:
+      enabled: true
+      windows: [5, 10, 20, 50]
+      statistics: ["mean", "std", "min", "max", "median"]
+      
+    volatility_measures:
+      enabled: true
+      windows: [20, 50]
+      include_realized_volatility: true
+      include_garch_volatility: true
+      
+    correlation_features:
+      enabled: true
+      cross_asset_pairs:
+        - ["AAPL", "MSFT"]
+        - ["SPY", "QQQ"]
+        - ["BTC", "ETH"]
+      rolling_window: 30
+      
+    momentum_features:
+      enabled: true
+      periods: [1, 5, 10, 20]
+      include_roc: true
+      include_momentum: true
+
+  # Market Microstructure Features
+  market_features:
+    bid_ask_spread:
+      enabled: true
+      relative_spread: true
+      
+    order_book_imbalance:
+      enabled: true
+      depth_levels: 5
+      
+    trade_intensity:
+      enabled: true
+      time_buckets: [1, 5, 15, 60]  # minutes
+      
+    volume_profile:
+      enabled: true
+      volume_weighted_prices: true
+      volume_participation_rate: true
+      
+    tick_features:
+      enabled: true
+      tick_direction: true
+      tick_size_analysis: true
+
+  # Time-based Features
+  temporal_features:
+    time_of_day:
+      enabled: true
+      granularity: "hour"
+      cyclical_encoding: true
+      
+    day_of_week:
+      enabled: true
+      cyclical_encoding: true
+      
+    market_session:
+      enabled: true
+      sessions: ["pre_market", "regular", "post_market"]
+      
+    holidays:
+      enabled: true
+      include_market_holidays: true
+      
+    earnings_calendar:
+      enabled: true
+      days_to_earnings: [1, 2, 5, 10]
+
+# Feature Processing Settings
+processing:
+  normalization:
+    method: "robust_scaler"  # Options: standard_scaler, min_max_scaler, robust_scaler
+    per_feature: true
+    
+  missing_values:
+    strategy: "forward_fill"  # Options: forward_fill, interpolate, drop
+    max_missing_ratio: 0.1
+    
+  outlier_handling:
+    enabled: true
+    method: "iqr"  # Options: iqr, zscore, isolation_forest
+    threshold: 1.5
+    
+  feature_selection:
+    enabled: true
+    methods: ["mutual_info", "correlation_filter"]
+    max_features: 100
+    correlation_threshold: 0.95
+
+# Real-time Processing
+streaming:
+  buffer_size: 1000
+  update_frequency_ms: 100
+  batch_processing: false
+  feature_cache_ttl_seconds: 300

@@ -1,0 +1,361 @@
+# ETL Streaming Configuration for QuantStream Analytics Platform
+
+etl_pipeline:
+  name: "quantstream-streaming-etl"
+  version: "1.0.0"
+  environment: "development"
+
+# Spark Configuration
+spark:
+  app_name: "QuantStream-ETL-Pipeline"
+  config:
+    # Core Spark settings
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.coalescePartitions.enabled: "true"
+    spark.sql.adaptive.skewJoin.enabled: "true"
+    spark.sql.adaptive.localShuffleReader.enabled: "true"
+    
+    # Delta Lake settings
+    spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
+    spark.sql.catalog.spark_catalog: "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+    spark.databricks.delta.optimizeWrite.enabled: "true"
+    spark.databricks.delta.autoCompact.enabled: "true"
+    spark.databricks.delta.retentionDurationCheck.enabled: "false"
+    
+    # Streaming settings
+    spark.sql.streaming.checkpointLocation.deleteOnStop: "false"
+    spark.sql.streaming.stopGracefullyOnShutdown: "true"
+    spark.sql.streaming.metricsEnabled: "true"
+    spark.sql.streaming.ui.enabled: "true"
+    
+    # Performance optimizations
+    spark.sql.streaming.forceDeleteTempCheckpointLocation: "true"
+    spark.sql.streaming.kafka.useDeprecatedOffsetFetching: "false"
+    
+    # Memory and resource settings
+    spark.driver.memory: "4g"
+    spark.driver.memoryFraction: "0.8"
+    spark.executor.memory: "4g"
+    spark.executor.memoryFraction: "0.8"
+    spark.executor.cores: "2"
+    spark.sql.shuffle.partitions: "200"
+    
+    # Photon engine (if available)
+    spark.databricks.photon.enabled: "false"
+
+# Kafka Configuration
+kafka:
+  bootstrap_servers:
+    - "localhost:9092"
+  security_protocol: "PLAINTEXT"
+  topics:
+    - name: "market_data_quotes"
+      enabled: true
+      partitions: 12
+      max_offsets_per_trigger: 10000
+    - name: "market_data_trades"
+      enabled: true
+      partitions: 12
+      max_offsets_per_trigger: 15000
+    - name: "market_data_bars"
+      enabled: true
+      partitions: 6
+      max_offsets_per_trigger: 5000
+
+# Layer Configurations
+bronze_layer:
+  enabled: true
+  output_path: "/tmp/delta/bronze"
+  checkpoint_path: "/tmp/checkpoints/bronze"
+  trigger_interval: "30 seconds"
+  starting_offsets: "latest"
+  max_offsets_per_trigger: 10000
+  topics:
+    - name: "market_data_quotes"
+      enabled: true
+      schema_version: "1.0"
+    - name: "market_data_trades"
+      enabled: true
+      schema_version: "1.0"
+    - name: "market_data_bars"
+      enabled: true
+      schema_version: "1.0"
+  data_retention:
+    retention_hours: 168  # 7 days
+    vacuum_hours: 24     # Run vacuum daily
+  optimization:
+    auto_optimize: true
+    z_order_columns: ["symbol", "kafka_timestamp", "topic"]
+    partition_columns: ["topic", "year", "month", "day"]
+
+silver_layer:
+  enabled: true
+  input_path: "/tmp/delta/bronze"
+  output_path: "/tmp/delta/silver"
+  checkpoint_path: "/tmp/checkpoints/silver"
+  trigger_interval: "1 minute"
+  quality_thresholds:
+    min_price: 0.01
+    max_price: 100000.0
+    min_volume: 0
+    max_volume: 1000000000
+    max_spread_pct: 10.0
+    completeness_threshold: 0.95
+    accuracy_threshold: 0.90
+  cleaning:
+    rules:
+      missing_value_strategy: "interpolate"
+      outlier_method: "iqr"
+      outlier_threshold: 3.0
+      outlier_action: "cap"
+      price_precision: 4
+      volume_precision: 0
+      symbol_case: "upper"
+      interpolation_window: 10
+  data_retention:
+    retention_hours: 720  # 30 days
+    vacuum_hours: 24
+  optimization:
+    auto_optimize: true
+    z_order_columns: ["symbol_clean", "timestamp_parsed"]
+    partition_columns: ["symbol_clean", "year", "month", "day"]
+
+gold_layer:
+  enabled: true
+  input_path: "/tmp/delta/silver"
+  output_path: "/tmp/delta/gold"
+  checkpoint_path: "/tmp/checkpoints/gold"
+  trigger_interval: "2 minutes"
+  time_windows:
+    - "1 minute"
+    - "5 minutes"
+    - "15 minutes"
+    - "1 hour"
+    - "1 day"
+  aggregation_types:
+    - "ohlcv_bars"
+    - "quote_metrics"
+    - "trade_metrics"
+    - "market_stats"
+  data_retention:
+    retention_hours: 2160  # 90 days
+    vacuum_hours: 168      # Weekly vacuum
+  optimization:
+    auto_optimize: true
+    z_order_columns: ["symbol", "timeframe", "window_start"]
+    partition_columns: ["symbol", "timeframe", "year", "month", "day"]
+
+# Technical Indicators Configuration
+technical_indicators:
+  enabled: true
+  input_path: "/tmp/delta/gold"
+  output_path: "/tmp/delta/indicators"
+  checkpoint_path: "/tmp/checkpoints/indicators"
+  trigger_interval: "3 minutes"
+  indicators:
+    moving_averages:
+      periods: [5, 10, 20, 50, 100, 200]
+      types: ["sma", "ema"]
+    bollinger_bands:
+      period: 20
+      std_dev: 2
+    rsi:
+      period: 14
+    macd:
+      fast_period: 12
+      slow_period: 26
+      signal_period: 9
+    stochastic:
+      k_period: 14
+      d_period: 3
+  data_retention:
+    retention_hours: 2160  # 90 days
+    vacuum_hours: 168
+
+# Anomaly Detection Configuration
+anomaly_detection:
+  enabled: true
+  input_path: "/tmp/delta/silver"
+  output_path: "/tmp/delta/anomalies"
+  checkpoint_path: "/tmp/checkpoints/anomalies"
+  trigger_interval: "5 minutes"
+  algorithms:
+    isolation_forest:
+      enabled: true
+      contamination: 0.1
+      n_estimators: 100
+    statistical_outliers:
+      enabled: true
+      method: "zscore"
+      threshold: 3.0
+    price_spike_detection:
+      enabled: true
+      spike_threshold_pct: 5.0
+      volume_spike_threshold: 3.0
+  alert_thresholds:
+    critical_anomaly_score: 0.8
+    warning_anomaly_score: 0.6
+  data_retention:
+    retention_hours: 720  # 30 days
+    vacuum_hours: 24
+
+# Schema Registry Configuration
+schema_registry:
+  enabled: true
+  evolution_strategy: "backward_compatible"
+  validation_mode: "strict"
+  schemas:
+    market_data_quotes:
+      version: "1.0"
+      fields:
+        - name: "symbol"
+          type: "string"
+          nullable: false
+        - name: "timestamp"
+          type: "string"
+          nullable: false
+        - name: "bid_price"
+          type: "string"
+          nullable: true
+        - name: "ask_price"
+          type: "string"
+          nullable: true
+        - name: "bid_size"
+          type: "string"
+          nullable: true
+        - name: "ask_size"
+          type: "string"
+          nullable: true
+        - name: "data_source"
+          type: "string"
+          nullable: false
+
+# Data Quality Configuration
+data_quality:
+  enabled: true
+  thresholds:
+    completeness_threshold: 0.95
+    accuracy_threshold: 0.90
+    consistency_threshold: 0.85
+    timeliness_threshold_seconds: 300
+    uniqueness_threshold: 0.99
+    overall_quality_threshold: 0.85
+    max_null_percentage: 5.0
+    max_duplicate_percentage: 1.0
+    max_latency_seconds: 600
+  quality_dimensions:
+    - "completeness"
+    - "accuracy"
+    - "consistency"
+    - "timeliness"
+    - "uniqueness"
+  monitoring:
+    enabled: true
+    alert_on_quality_degradation: true
+    quality_report_interval: "10 minutes"
+    metrics_collection_interval: "1 minute"
+
+# Performance Configuration
+performance:
+  enable_aqe: true
+  enable_photon: false
+  auto_broadcast_join_threshold: "10MB"
+  adaptive_query_execution:
+    enabled: true
+    coalesce_partitions: true
+    skew_join_optimization: true
+    local_shuffle_reader: true
+  checkpoint_management:
+    cleanup_old_checkpoints: true
+    checkpoint_retention_hours: 72
+  memory_management:
+    executor_memory_fraction: 0.8
+    storage_memory_fraction: 0.5
+    off_heap_enabled: false
+
+# Monitoring and Alerting
+monitoring:
+  enabled: true
+  metrics:
+    processing_latency: true
+    throughput_metrics: true
+    error_rates: true
+    data_quality_scores: true
+    resource_utilization: true
+  alerting:
+    enabled: true
+    alert_channels:
+      - type: "prometheus"
+        endpoint: "http://localhost:9090"
+      - type: "log"
+        level: "ERROR"
+    alert_rules:
+      - name: "high_processing_latency"
+        condition: "avg_processing_latency > 300"
+        severity: "warning"
+      - name: "data_quality_degradation"
+        condition: "quality_score < 0.85"
+        severity: "critical"
+      - name: "streaming_query_failure"
+        condition: "query_status == 'failed'"
+        severity: "critical"
+
+# Error Handling
+error_handling:
+  dead_letter_queue:
+    enabled: true
+    output_path: "/tmp/delta/dlq"
+    max_retries: 3
+    retry_delay_seconds: 30
+  error_recovery:
+    auto_restart_failed_queries: true
+    max_restart_attempts: 3
+    restart_delay_seconds: 60
+  logging:
+    log_level: "INFO"
+    structured_logging: true
+    error_sampling_rate: 1.0
+
+# Resource Management
+resources:
+  driver:
+    memory: "4g"
+    cores: 2
+  executor:
+    memory: "4g"
+    cores: 2
+    instances: 2
+  dynamic_allocation:
+    enabled: true
+    min_executors: 1
+    max_executors: 10
+    initial_executors: 2
+
+# Environment-specific overrides
+environments:
+  development:
+    spark:
+      config:
+        spark.driver.memory: "2g"
+        spark.executor.memory: "2g"
+    bronze_layer:
+      trigger_interval: "1 minute"
+    silver_layer:
+      trigger_interval: "2 minutes"
+    gold_layer:
+      trigger_interval: "5 minutes"
+  
+  production:
+    spark:
+      config:
+        spark.driver.memory: "8g"
+        spark.executor.memory: "8g"
+        spark.sql.shuffle.partitions: "400"
+    bronze_layer:
+      trigger_interval: "10 seconds"
+    silver_layer:
+      trigger_interval: "30 seconds"
+    gold_layer:
+      trigger_interval: "1 minute"
+    performance:
+      enable_photon: true
