@@ -21,6 +21,14 @@ from ...models.alerts import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+_db_service = None
+
+def set_services(db_svc):
+    """Called from main.py lifespan to inject initialized DB service."""
+    global _db_service
+    _db_service = db_svc
+
+# Mock alert data for demonstration
 # Mock alert data for demonstration
 MOCK_ACTIVE_ALERTS = [
     {
@@ -29,7 +37,7 @@ MOCK_ACTIVE_ALERTS = [
         "symbol": "AAPL",
         "title": "Price Target Reached",
         "message": "AAPL has reached your target price of $180.00",
-        "severity": "medium",
+        "severity": "warning",
         "timestamp": datetime.now() - timedelta(minutes=5),
         "status": "active",
         "conditions": {"price": 180.00, "condition": "above"},
@@ -42,7 +50,7 @@ MOCK_ACTIVE_ALERTS = [
         "symbol": "TSLA",
         "title": "Unusual Volume Activity",
         "message": "TSLA volume is 300% above average",
-        "severity": "high",
+        "severity": "critical",
         "timestamp": datetime.now() - timedelta(minutes=12),
         "status": "active",
         "conditions": {"volume_multiplier": 3.0},
@@ -55,7 +63,7 @@ MOCK_ACTIVE_ALERTS = [
         "symbol": "GOOGL",
         "title": "RSI Oversold Signal",
         "message": "GOOGL RSI has dropped below 30 (currently 28.5)",
-        "severity": "medium",
+        "severity": "info",
         "timestamp": datetime.now() - timedelta(minutes=8),
         "status": "active",
         "conditions": {"rsi": 28.5, "threshold": 30},
@@ -68,7 +76,7 @@ MOCK_ACTIVE_ALERTS = [
         "symbol": "MSFT",
         "title": "Price Anomaly Detected",
         "message": "MSFT price movement outside normal range",
-        "severity": "high",
+        "severity": "critical",
         "timestamp": datetime.now() - timedelta(minutes=3),
         "status": "active",
         "conditions": {"z_score": 3.2, "threshold": 3.0},
@@ -77,7 +85,7 @@ MOCK_ACTIVE_ALERTS = [
     }
 ]
 
-@router.get("/", response_model=List[Alert])
+@router.get("/")
 async def get_alerts(
     user_id: str = "demo_user",
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -103,25 +111,24 @@ async def get_alerts(
             if alert_type and alert_data["type"] != alert_type:
                 continue
             
-            alert = Alert(
-                id=alert_data["id"],
-                type=alert_data["type"],
-                symbol=alert_data.get("symbol"),
-                title=alert_data["title"],
-                message=alert_data["message"],
-                severity=alert_data["severity"],
-                status=alert_data["status"],
-                conditions=alert_data["conditions"],
-                actions_taken=alert_data["actions_taken"],
-                created_at=alert_data["timestamp"],
-                triggered_at=alert_data["timestamp"],
-                user_id=alert_data["user_id"]
-            )
-            alerts.append(alert)
+            alerts.append({
+                "id": alert_data["id"],
+                "type": alert_data["type"],
+                "severity": alert_data["severity"],
+                "status": alert_data["status"],
+                "title": alert_data["title"],
+                "message": alert_data["message"],
+                "symbol": alert_data.get("symbol"),
+                "created_at": alert_data["timestamp"].isoformat(),
+                "triggered_at": alert_data["timestamp"].isoformat(),
+            })
         
         return alerts[:limit]
         
     except Exception as e:
+        logger.error(f"Error fetching alerts: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching alerts: {str(e)}")
+
         logger.error(f"Error fetching alerts: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching alerts: {str(e)}")
 
@@ -317,10 +324,15 @@ async def get_alert_statistics(
     """Get alert statistics"""
     
     try:
+        active = [a for a in MOCK_ACTIVE_ALERTS if a["user_id"] == user_id]
+        critical_count = len([a for a in active if a["severity"] == "critical"])
+        
         # Mock statistics
         return {
             "total_alerts": 127,
-            "active_alerts": len([a for a in MOCK_ACTIVE_ALERTS if a["user_id"] == user_id]),
+            "active_alerts": len(active),
+            "triggered_today": 8,
+            "critical_count": critical_count,
             "alerts_by_type": {
                 "price": 45,
                 "volume": 23,
@@ -328,9 +340,9 @@ async def get_alert_statistics(
                 "anomaly": 21
             },
             "alerts_by_severity": {
-                "low": 32,
-                "medium": 67,
-                "high": 28
+                "info": 32,
+                "warning": 67,
+                "critical": 28
             },
             "avg_resolution_time_minutes": 18.5,
             "false_positive_rate": 0.03,
@@ -376,35 +388,32 @@ async def create_alert_rule(rule_data: Dict[str, Any], user_id: str = "demo_user
         logger.error(f"Error creating alert rule: {e}")
         raise HTTPException(status_code=500, detail=f"Error creating rule: {str(e)}")
 
-@router.get("/rules/", response_model=List[AlertRule])
+@router.get("/rules/")
 async def get_alert_rules(user_id: str = "demo_user"):
     """Get user alert rules"""
     
     try:
-        # Mock alert rules
         rules = [
-            AlertRule(
-                id="RULE_001",
-                name="AAPL Price Alert",
-                type="price",
-                symbol="AAPL",
-                conditions={"price": 180.00, "condition": "above"},
-                notification_channels=["email", "dashboard"],
-                is_active=True,
-                created_at=datetime.now() - timedelta(days=5),
-                user_id=user_id
-            ),
-            AlertRule(
-                id="RULE_002",
-                name="Volume Spike Detection",
-                type="volume",
-                symbol=None,  # Applies to all symbols
-                conditions={"volume_multiplier": 2.5},
-                notification_channels=["dashboard", "slack"],
-                is_active=True,
-                created_at=datetime.now() - timedelta(days=10),
-                user_id=user_id
-            )
+            {
+                "id": "RULE_001",
+                "name": "AAPL Price Alert",
+                "type": "price",
+                "condition": "Price above $180",
+                "threshold": 180.00,
+                "symbol": "AAPL",
+                "enabled": True,
+                "created_at": (datetime.now() - timedelta(days=5)).isoformat(),
+            },
+            {
+                "id": "RULE_002",
+                "name": "Volume Spike Detection",
+                "type": "volume",
+                "condition": "Volume above 2.5x average",
+                "threshold": 2.5,
+                "symbol": None,
+                "enabled": True,
+                "created_at": (datetime.now() - timedelta(days=10)).isoformat(),
+            },
         ]
         
         return rules
@@ -412,6 +421,7 @@ async def get_alert_rules(user_id: str = "demo_user"):
     except Exception as e:
         logger.error(f"Error fetching alert rules: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching rules: {str(e)}")
+
 
 @router.get("/channels/", response_model=List[NotificationChannel])
 async def get_notification_channels(user_id: str = "demo_user"):

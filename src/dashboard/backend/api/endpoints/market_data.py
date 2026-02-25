@@ -21,7 +21,15 @@ from ...models.market_data import (
 from ...services.redis_service import RedisService
 
 router = APIRouter()
-redis_service = RedisService()
+_redis_service = None
+
+def set_services(redis_svc):
+    """Called from main.py lifespan to inject initialized Redis service."""
+    global _redis_service
+    _redis_service = redis_svc
+
+def _redis():
+    return _redis_service
 
 @router.get("/current/{symbol}", response_model=MarketDataResponse)
 async def get_current_market_data(
@@ -32,7 +40,7 @@ async def get_current_market_data(
     
     try:
         # Check Redis cache first
-        cached_data = await redis_service.get(f"market_data:{symbol}")
+        cached_data = await _redis().get(f"market_data:{symbol}")
         
         if cached_data:
             return MarketDataResponse.parse_raw(cached_data)
@@ -95,7 +103,7 @@ async def get_current_market_data(
         )
         
         # Cache the response
-        await redis_service.set(
+        await _redis().set(
             f"market_data:{symbol}",
             response.json(),
             expire=30  # Cache for 30 seconds
@@ -117,7 +125,7 @@ async def get_historical_data(request: HistoricalDataRequest):
         
         # Check cache
         cache_key = f"historical:{request.symbol}:{request.start_date}:{request.end_date}:{request.interval}"
-        cached_data = await redis_service.get(cache_key)
+        cached_data = await _redis().get(cache_key)
         
         if cached_data:
             return [MarketDataPoint.parse_raw(item) for item in cached_data]
@@ -167,7 +175,7 @@ async def get_historical_data(request: HistoricalDataRequest):
             )
         
         # Cache the result
-        await redis_service.set(
+        await _redis().set(
             cache_key,
             [point.json() for point in data_points],
             expire=300  # Cache for 5 minutes
@@ -407,3 +415,105 @@ def calculate_bollinger_bands(prices: np.ndarray, period: int = 20, num_std: flo
     lower = sma - (num_std * std)
     
     return upper, sma, lower
+
+
+# ── Dashboard-facing aggregate endpoints ──────────────────────
+
+WATCHED_SYMBOLS = ["AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "NVDA", "META", "JPM"]
+SECTOR_MAP = {
+    "AAPL": "Technology", "GOOGL": "Technology", "MSFT": "Technology",
+    "NVDA": "Technology", "META": "Technology", "AMZN": "Consumer Cyclical",
+    "TSLA": "Automotive", "JPM": "Financial",
+}
+
+async def _fetch_quote(symbol: str) -> dict:
+    """Fetch a single symbol quote via yfinance with Redis cache."""
+    cache_key = f"quote:{symbol}"
+    rs = _redis()
+    if rs:
+        cached = await rs.get(cache_key)
+        if cached:
+            import json
+            return json.loads(cached) if isinstance(cached, str) else cached
+
+    ticker = yf.Ticker(symbol)
+    info = ticker.fast_info
+    hist = ticker.history(period="2d")
+
+    price = float(info.get("lastPrice", 0) if hasattr(info, "get") else getattr(info, "last_price", 0))
+    prev_close = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else price
+    change = price - prev_close
+    change_pct = (change / prev_close * 100) if prev_close else 0
+    volume = int(info.get("lastVolume", 0) if hasattr(info, "get") else getattr(info, "last_volume", 0))
+    mcap = int(info.get("marketCap", 0) if hasattr(info, "get") else getattr(info, "market_cap", 0))
+
+    result = {
+        "symbol": symbol,
+        "name": symbol,
+        "price": round(price, 2),
+        "change": round(change, 2),
+        "change_percent": round(change_pct, 2),
+        "volume": volume,
+        "market_cap": mcap,
+        "sector": SECTOR_MAP.get(symbol, "Other"),
+    }
+
+    if rs:
+        import json
+        await rs.set(cache_key, json.dumps(result), expire=30)
+
+    return result
+
+
+@router.get("/overview")
+async def get_market_overview():
+    """Aggregated overview of watched symbols — used by the Next.js dashboard."""
+    import asyncio
+    results = await asyncio.gather(*[_fetch_quote(s) for s in WATCHED_SYMBOLS], return_exceptions=True)
+    return [r for r in results if isinstance(r, dict)]
+
+
+@router.get("/sectors")
+async def get_sector_performance():
+    """Sector-level performance aggregation."""
+    import asyncio
+    quotes = await asyncio.gather(*[_fetch_quote(s) for s in WATCHED_SYMBOLS], return_exceptions=True)
+    valid = [q for q in quotes if isinstance(q, dict)]
+
+    sector_agg: dict = {}
+    for q in valid:
+        sec = q["sector"]
+        if sec not in sector_agg:
+            sector_agg[sec] = {"sector": sec, "change_percent": 0.0, "market_cap": 0, "volume": 0, "count": 0}
+        sector_agg[sec]["change_percent"] += q["change_percent"]
+        sector_agg[sec]["market_cap"] += q["market_cap"]
+        sector_agg[sec]["volume"] += q["volume"]
+        sector_agg[sec]["count"] += 1
+
+    result = []
+    for s in sector_agg.values():
+        result.append({
+            "sector": s["sector"],
+            "change_percent": round(s["change_percent"] / max(s["count"], 1), 2),
+            "market_cap": s["market_cap"],
+            "volume": s["volume"],
+        })
+    return result
+
+
+@router.get("/top-gainers")
+async def get_top_gainers():
+    """Top gaining symbols."""
+    import asyncio
+    quotes = await asyncio.gather(*[_fetch_quote(s) for s in WATCHED_SYMBOLS], return_exceptions=True)
+    valid = [q for q in quotes if isinstance(q, dict)]
+    return sorted(valid, key=lambda x: x["change_percent"], reverse=True)[:5]
+
+
+@router.get("/top-losers")
+async def get_top_losers():
+    """Top losing symbols."""
+    import asyncio
+    quotes = await asyncio.gather(*[_fetch_quote(s) for s in WATCHED_SYMBOLS], return_exceptions=True)
+    valid = [q for q in quotes if isinstance(q, dict)]
+    return sorted(valid, key=lambda x: x["change_percent"])[:5]

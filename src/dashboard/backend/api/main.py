@@ -8,7 +8,7 @@ Provides REST endpoints for market data, portfolio management, alerts, and syste
 from fastapi import FastAPI, HTTPException, Depends, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 import asyncio
 import uvicorn
 from contextlib import asynccontextmanager
@@ -17,7 +17,7 @@ import os
 import logging
 
 # Import API modules
-from .endpoints import market_data, portfolio, alerts, system_metrics, websocket_manager
+from .endpoints import market_data, portfolio, alerts, system_metrics, websocket_manager, auth
 from ..services.auth_service import AuthService
 from ..services.database_service import DatabaseService
 from ..services.redis_service import RedisService
@@ -43,10 +43,23 @@ async def lifespan(app: FastAPI):
     # Initialize services
     await db_service.initialize()
     await redis_service.initialize()
-    
+
+    # Wire auth service with DB and Redis
+    auth_service.set_services(db_service, redis_service)
+    auth.set_services(auth_service, db_service)
+
+    # Inject services into endpoint modules that need them
+    portfolio.set_services(db_service)
+    alerts.set_services(db_service)
+    market_data.set_services(redis_service)
+
+    # Seed default admin user and demo portfolio if no users exist
+    await _seed_default_users(db_service, auth_service)
+    await _seed_demo_portfolio(db_service)
+
     # Start background tasks
     asyncio.create_task(websocket_manager.start_data_streaming())
-    
+
     logger.info("API startup complete")
     
     yield
@@ -60,6 +73,76 @@ async def lifespan(app: FastAPI):
     await websocket_manager.stop_data_streaming()
     
     logger.info("API shutdown complete")
+
+async def _seed_default_users(db: DatabaseService, auth_svc: AuthService):
+    """Seed demo users on first startup if the users table is empty."""
+    try:
+        async with db.get_connection() as conn:
+            count = await conn.fetchval("SELECT COUNT(*) FROM users")
+        if count > 0:
+            return
+
+        demo_users = [
+            {"username": "admin", "email": "admin@quantstream.ai", "password": "admin123", "role": "administrator", "full_name": "System Administrator"},
+            {"username": "analyst", "email": "analyst@quantstream.ai", "password": "analyst123", "role": "analyst", "full_name": "Financial Analyst"},
+            {"username": "trader", "email": "trader@quantstream.ai", "password": "trader123", "role": "trader", "full_name": "Quantitative Trader"},
+        ]
+        for u in demo_users:
+            await db.create_user({
+                "username": u["username"],
+                "email": u["email"],
+                "password_hash": auth_svc.hash_password(u["password"]),
+                "role": u["role"],
+                "full_name": u["full_name"],
+            })
+        logger.info("Seeded %d demo users", len(demo_users))
+    except Exception as e:
+        logger.warning("Could not seed users (DB may be unavailable): %s", e)
+
+
+async def _seed_demo_portfolio(db: DatabaseService):
+    """Seed demo portfolio positions and transactions for the admin user (id=1)."""
+    try:
+        async with db.get_connection() as conn:
+            pos_count = await conn.fetchval("SELECT COUNT(*) FROM portfolio_positions")
+            txn_count = await conn.fetchval("SELECT COUNT(*) FROM transactions")
+
+        if pos_count == 0:
+            positions = [
+                ("AAPL", 100, 150.00),
+                ("GOOGL", 50, 2800.00),
+                ("MSFT", 75, 380.00),
+                ("AMZN", 30, 3200.00),
+                ("TSLA", 25, 220.00),
+                ("NVDA", 40, 450.00),
+                ("META", 60, 310.00),
+                ("JPM", 45, 155.00),
+            ]
+            for symbol, shares, avg_cost in positions:
+                await db.update_portfolio_position(1, symbol, shares, avg_cost)
+            logger.info("Seeded %d demo portfolio positions", len(positions))
+
+        if txn_count == 0:
+            async with db.get_connection() as conn:
+                txns = [
+                    (1, "AAPL", "BUY", 100, 150.00, 15000.00, datetime(2024, 6, 15, 9, 45)),
+                    (1, "GOOGL", "BUY", 50, 2800.00, 140000.00, datetime(2024, 6, 20, 14, 15)),
+                    (1, "MSFT", "BUY", 75, 380.00, 28500.00, datetime(2024, 7, 10, 11, 20)),
+                    (1, "TSLA", "BUY", 25, 220.00, 5500.00, datetime(2024, 7, 25, 10, 30)),
+                    (1, "NVDA", "BUY", 40, 450.00, 18000.00, datetime(2024, 8, 1, 13, 0)),
+                    (1, "META", "BUY", 60, 310.00, 18600.00, datetime(2024, 8, 15, 15, 0)),
+                ]
+                for uid, sym, ttype, qty, price, total, dt in txns:
+                    await conn.execute(
+                        """INSERT INTO transactions (user_id, symbol, transaction_type, quantity, price, total_amount, transaction_date)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        ON CONFLICT DO NOTHING""",
+                        uid, sym, ttype, qty, price, total, dt,
+                    )
+            logger.info("Seeded %d demo transactions", len(txns))
+    except Exception as e:
+        logger.warning("Could not seed portfolio (DB may be unavailable): %s", e)
+
 
 # Create FastAPI application
 app = FastAPI(
@@ -124,6 +207,13 @@ async def metrics():
     """Prometheus metrics endpoint"""
     return generate_latest().decode('utf-8')
 
+# Auth router (public — no auth dependency)
+app.include_router(
+    auth.router,
+    prefix="/api/v1/auth",
+    tags=["Authentication"],
+)
+
 # Include API routers
 app.include_router(
     market_data.router,
@@ -176,21 +266,27 @@ async def root():
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """Handle HTTP exceptions"""
-    return {
-        "error": exc.detail,
-        "status_code": exc.status_code,
-        "timestamp": datetime.now().isoformat()
-    }
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code,
+            "timestamp": datetime.now().isoformat()
+        }
+    )
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
     """Handle general exceptions"""
     logger.error(f"Unhandled exception: {str(exc)}")
-    return {
-        "error": "Internal server error",
-        "status_code": 500,
-        "timestamp": datetime.now().isoformat()
-    }
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "status_code": 500,
+            "timestamp": datetime.now().isoformat()
+        }
+    )
 
 if __name__ == "__main__":
     # Development server

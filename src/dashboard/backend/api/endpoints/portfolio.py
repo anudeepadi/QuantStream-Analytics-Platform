@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 import logging
+import random
 
 from ...models.portfolio import (
     PortfolioResponse,
@@ -22,6 +23,13 @@ from ...services.redis_service import RedisService
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+_db_service = None
+
+def set_services(db_svc):
+    """Called from main.py lifespan to inject initialized DB service."""
+    global _db_service
+    _db_service = db_svc
+
 # Mock portfolio data for demonstration
 MOCK_POSITIONS = {
     "AAPL": {"shares": 100, "avg_cost": 150.00, "entry_date": "2024-01-15"},
@@ -31,7 +39,23 @@ MOCK_POSITIONS = {
     "TSLA": {"shares": 25, "avg_cost": 220.00, "entry_date": "2024-01-25"}
 }
 
-@router.get("/positions", response_model=List[PortfolioPosition])
+NAME_MAP = {
+    "AAPL": "Apple Inc.",
+    "GOOGL": "Alphabet Inc.",
+    "MSFT": "Microsoft Corp.",
+    "AMZN": "Amazon.com Inc.",
+    "TSLA": "Tesla Inc.",
+}
+
+SECTOR_MAP = {
+    "AAPL": "Technology",
+    "GOOGL": "Communication Services",
+    "MSFT": "Technology",
+    "AMZN": "Consumer Discretionary",
+    "TSLA": "Consumer Discretionary",
+}
+
+@router.get("/positions")
 async def get_portfolio_positions(user_id: str = "demo_user"):
     """Get all portfolio positions"""
     
@@ -47,25 +71,41 @@ async def get_portfolio_positions(user_id: str = "demo_user"):
             "TSLA": 195.80
         }
         
+        # First pass: compute total market value for weight calculation
+        position_data = []
+        total_market_value = 0.0
+        
         for symbol, data in MOCK_POSITIONS.items():
             current_price = mock_current_prices.get(symbol, data["avg_cost"])
             market_value = data["shares"] * current_price
             cost_basis = data["shares"] * data["avg_cost"]
             unrealized_pnl = market_value - cost_basis
-            
-            position = PortfolioPosition(
-                symbol=symbol,
-                shares=data["shares"],
-                avg_cost=data["avg_cost"],
-                current_price=current_price,
-                market_value=market_value,
-                cost_basis=cost_basis,
-                unrealized_pnl=unrealized_pnl,
-                unrealized_pnl_percent=(unrealized_pnl / cost_basis) * 100,
-                entry_date=datetime.strptime(data["entry_date"], "%Y-%m-%d").date(),
-                last_updated=datetime.now()
-            )
-            positions.append(position)
+            total_market_value += market_value
+            position_data.append({
+                "symbol": symbol,
+                "current_price": current_price,
+                "market_value": market_value,
+                "cost_basis": cost_basis,
+                "unrealized_pnl": unrealized_pnl,
+                "shares": data["shares"],
+                "avg_cost": data["avg_cost"],
+            })
+        
+        # Second pass: build response dicts with weight
+        for p in position_data:
+            weight = round((p["market_value"] / total_market_value) * 100, 2) if total_market_value else 0.0
+            positions.append({
+                "symbol": p["symbol"],
+                "name": NAME_MAP.get(p["symbol"], p["symbol"]),
+                "quantity": p["shares"],
+                "avg_cost": p["avg_cost"],
+                "current_price": p["current_price"],
+                "market_value": round(p["market_value"], 2),
+                "unrealized_pnl": round(p["unrealized_pnl"], 2),
+                "unrealized_pnl_percent": round((p["unrealized_pnl"] / p["cost_basis"]) * 100, 2) if p["cost_basis"] else 0.0,
+                "weight": weight,
+                "sector": SECTOR_MAP.get(p["symbol"], "Other"),
+            })
         
         return positions
         
@@ -73,43 +113,38 @@ async def get_portfolio_positions(user_id: str = "demo_user"):
         logger.error(f"Error fetching portfolio positions: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching positions: {str(e)}")
 
-@router.get("/summary", response_model=PortfolioSummary)
+@router.get("/summary")
 async def get_portfolio_summary(user_id: str = "demo_user"):
     """Get portfolio summary"""
     
     try:
         positions = await get_portfolio_positions(user_id)
         
-        total_market_value = sum(pos.market_value for pos in positions)
-        total_cost_basis = sum(pos.cost_basis for pos in positions)
-        total_unrealized_pnl = sum(pos.unrealized_pnl for pos in positions)
-        cash_balance = 25000.00  # Mock cash balance
+        total_market_value = sum(p["market_value"] for p in positions)
+        total_cost = sum(p["quantity"] * p["avg_cost"] for p in positions)
+        total_pnl = total_market_value - total_cost
+        total_pnl_percent = round((total_pnl / total_cost) * 100, 2) if total_cost else 0.0
+        cash = 25000.00
+        buying_power = cash * 2  # Mock 2x margin
+        daily_pnl = 1250.75
+        daily_pnl_percent = round((daily_pnl / total_market_value) * 100, 2) if total_market_value else 0.0
         
-        portfolio_value = total_market_value + cash_balance
-        initial_capital = 200000.00  # Mock initial capital
-        total_return = portfolio_value - initial_capital
-        
-        summary = PortfolioSummary(
-            portfolio_value=portfolio_value,
-            cash_balance=cash_balance,
-            total_market_value=total_market_value,
-            total_cost_basis=total_cost_basis,
-            total_unrealized_pnl=total_unrealized_pnl,
-            total_return=total_return,
-            total_return_percent=(total_return / initial_capital) * 100,
-            day_change=1250.75,  # Mock day change
-            day_change_percent=0.85,
-            positions_count=len(positions),
-            last_updated=datetime.now()
-        )
-        
-        return summary
+        return {
+            "total_value": round(total_market_value + cash, 2),
+            "total_cost": round(total_cost, 2),
+            "total_pnl": round(total_pnl, 2),
+            "total_pnl_percent": total_pnl_percent,
+            "daily_pnl": daily_pnl,
+            "daily_pnl_percent": daily_pnl_percent,
+            "cash": cash,
+            "buying_power": buying_power,
+        }
         
     except Exception as e:
         logger.error(f"Error calculating portfolio summary: {e}")
         raise HTTPException(status_code=500, detail=f"Error calculating summary: {str(e)}")
 
-@router.get("/performance", response_model=PerformanceMetrics)
+@router.get("/performance")
 async def get_performance_metrics(
     user_id: str = "demo_user",
     days: int = 30
@@ -117,25 +152,15 @@ async def get_performance_metrics(
     """Get portfolio performance metrics"""
     
     try:
-        # Mock performance data
-        metrics = PerformanceMetrics(
-            total_return_percent=15.75,
-            annualized_return=18.2,
-            volatility=22.5,
-            sharpe_ratio=0.81,
-            max_drawdown=-8.3,
-            beta=1.15,
-            alpha=2.4,
-            win_rate=62.5,
-            profit_factor=1.35,
-            calmar_ratio=2.19,
-            sortino_ratio=1.12,
-            var_95=2.8,
-            period_days=days,
-            last_calculated=datetime.now()
-        )
+        periods = [
+            {"period": "1D", "return_percent": 0.85, "benchmark_return_percent": 0.42, "alpha": 0.43, "sharpe_ratio": 1.2, "max_drawdown": -0.3, "volatility": 12.5},
+            {"period": "1W", "return_percent": 2.15, "benchmark_return_percent": 1.10, "alpha": 1.05, "sharpe_ratio": 1.05, "max_drawdown": -1.2, "volatility": 14.8},
+            {"period": "1M", "return_percent": 5.40, "benchmark_return_percent": 3.20, "alpha": 2.20, "sharpe_ratio": 0.95, "max_drawdown": -3.5, "volatility": 18.2},
+            {"period": "3M", "return_percent": 12.30, "benchmark_return_percent": 8.50, "alpha": 3.80, "sharpe_ratio": 0.88, "max_drawdown": -6.1, "volatility": 20.5},
+            {"period": "YTD", "return_percent": 15.75, "benchmark_return_percent": 10.20, "alpha": 5.55, "sharpe_ratio": 0.81, "max_drawdown": -8.3, "volatility": 22.5},
+        ]
         
-        return metrics
+        return periods
         
     except Exception as e:
         logger.error(f"Error calculating performance metrics: {e}")
@@ -222,35 +247,98 @@ async def get_portfolio_allocation(user_id: str = "demo_user"):
     try:
         positions = await get_portfolio_positions(user_id)
         
-        # Calculate allocation by sector (mock data)
-        sector_allocation = {
-            "Technology": 75.5,
-            "Consumer Discretionary": 15.2,
-            "Communication Services": 9.3
-        }
+        # Aggregate market value by sector
+        sector_values = {}
+        total_value = sum(p["market_value"] for p in positions)
         
-        # Calculate allocation by position
-        total_value = sum(pos.market_value for pos in positions)
-        position_allocation = []
+        for p in positions:
+            sector = p["sector"]
+            sector_values[sector] = sector_values.get(sector, 0.0) + p["market_value"]
         
-        for pos in positions:
-            allocation_percent = (pos.market_value / total_value) * 100
-            position_allocation.append({
-                "symbol": pos.symbol,
-                "allocation_percent": round(allocation_percent, 2),
-                "market_value": pos.market_value
+        colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
+        
+        allocation = []
+        for i, (sector, value) in enumerate(sector_values.items()):
+            percentage = round((value / total_value) * 100, 2) if total_value else 0.0
+            allocation.append({
+                "category": sector,
+                "value": round(value, 2),
+                "percentage": percentage,
+                "color": colors[i % len(colors)],
             })
         
-        return {
-            "by_sector": sector_allocation,
-            "by_position": position_allocation,
-            "cash_allocation": 12.5,  # Mock cash percentage
-            "last_updated": datetime.now().isoformat()
-        }
+        return allocation
         
     except Exception as e:
         logger.error(f"Error calculating allocation: {e}")
         raise HTTPException(status_code=500, detail=f"Error calculating allocation: {str(e)}")
+
+@router.get("/activity")
+async def get_recent_activity(user_id: str = "demo_user"):
+    """Get recent portfolio activity"""
+    
+    try:
+        from datetime import timedelta
+        
+        now = datetime.now()
+        
+        activities = [
+            {
+                "id": "act_001",
+                "type": "buy",
+                "symbol": "AAPL",
+                "description": "Bought 10 shares of AAPL",
+                "amount": 1805.00,
+                "timestamp": (now - timedelta(hours=2)).isoformat(),
+            },
+            {
+                "id": "act_002",
+                "type": "sell",
+                "symbol": "TSLA",
+                "description": "Sold 5 shares of TSLA",
+                "amount": 979.00,
+                "timestamp": (now - timedelta(hours=5)).isoformat(),
+            },
+            {
+                "id": "act_003",
+                "type": "dividend",
+                "symbol": "MSFT",
+                "description": "Dividend payment from MSFT",
+                "amount": 56.25,
+                "timestamp": (now - timedelta(days=1)).isoformat(),
+            },
+            {
+                "id": "act_004",
+                "type": "deposit",
+                "symbol": "",
+                "description": "Cash deposit",
+                "amount": 5000.00,
+                "timestamp": (now - timedelta(days=2)).isoformat(),
+            },
+            {
+                "id": "act_005",
+                "type": "buy",
+                "symbol": "GOOGL",
+                "description": "Bought 3 shares of GOOGL",
+                "amount": 8850.00,
+                "timestamp": (now - timedelta(days=3)).isoformat(),
+            },
+            {
+                "id": "act_006",
+                "type": "withdrawal",
+                "symbol": "",
+                "description": "Cash withdrawal",
+                "amount": 2000.00,
+                "timestamp": (now - timedelta(days=4)).isoformat(),
+            },
+        ]
+        
+        return activities
+        
+    except Exception as e:
+        logger.error(f"Error fetching recent activity: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching activity: {str(e)}")
+
 
 @router.get("/risk-metrics")
 async def get_risk_metrics(user_id: str = "demo_user"):

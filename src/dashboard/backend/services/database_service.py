@@ -125,7 +125,8 @@ class DatabaseService:
             avg_cost DECIMAL(10, 4) NOT NULL,
             entry_date DATE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, symbol)
         );
         
         -- Transactions table
@@ -233,6 +234,47 @@ class DatabaseService:
             
             return user_id
     
+    async def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Get user by ID"""
+        async with self.get_connection() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM users WHERE id = $1 AND is_active = TRUE",
+                user_id
+            )
+            return dict(row) if row else None
+
+    async def update_last_login(self, user_id: int):
+        """Update user last login timestamp"""
+        async with self.get_connection() as conn:
+            await conn.execute(
+                "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1",
+                user_id
+            )
+
+    async def update_user_profile(self, user_id: int, profile_data: Dict[str, Any]) -> bool:
+        """Update user profile fields"""
+        async with self.get_connection() as conn:
+            await conn.execute(
+                """
+                UPDATE users SET full_name = COALESCE($2, full_name),
+                                 email = COALESCE($3, email)
+                WHERE id = $1
+                """,
+                user_id,
+                profile_data.get("full_name"),
+                profile_data.get("email"),
+            )
+            return True
+
+    async def update_user_password(self, user_id: int, password_hash: str) -> bool:
+        """Update user password hash"""
+        async with self.get_connection() as conn:
+            await conn.execute(
+                "UPDATE users SET password_hash = $2 WHERE id = $1",
+                user_id, password_hash
+            )
+            return True
+
     # Portfolio operations
     async def get_portfolio_positions(self, user_id: int) -> List[Dict[str, Any]]:
         """Get all portfolio positions for a user"""
