@@ -2,6 +2,8 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { AreaChart } from "@/components/charts/area-chart"
+import { CardSkeleton, TableSkeleton } from "@/components/shared/card-skeleton"
+import { usePerformance } from "@/lib/hooks/use-portfolio"
 import { MOCK_PERFORMANCE } from "@/lib/mock-data/portfolio"
 import { cn } from "@/lib/utils"
 import { TrendingUp, Activity, BarChart3, AlertTriangle } from "lucide-react"
@@ -52,6 +54,9 @@ const CHART_KEYS = [
 ]
 
 export default function AnalyticsPage() {
+  const { data: perfData, isLoading } = usePerformance()
+  const performance = perfData ?? MOCK_PERFORMANCE
+
   return (
     <div className="space-y-6">
       <div>
@@ -63,30 +68,32 @@ export default function AnalyticsPage() {
 
       {/* KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {KPI_CARDS.map((kpi) => (
-          <Card key={kpi.label}>
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between mb-3">
-                <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {kpi.label}
-                </p>
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
-                  <kpi.icon className="h-4 w-4 text-primary" />
-                </div>
-              </div>
-              <p
-                className={cn(
-                  "text-2xl font-bold",
-                  kpi.positive === true && "text-positive",
-                  kpi.positive === false && "text-negative",
-                )}
-              >
-                {kpi.value}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
+        {isLoading
+          ? Array.from({ length: 4 }, (_, i) => <CardSkeleton key={i} />)
+          : KPI_CARDS.map((kpi) => (
+              <Card key={kpi.label}>
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-3">
+                    <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {kpi.label}
+                    </p>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
+                      <kpi.icon className="h-4 w-4 text-primary" />
+                    </div>
+                  </div>
+                  <p
+                    className={cn(
+                      "text-2xl font-bold",
+                      kpi.positive === true && "text-positive",
+                      kpi.positive === false && "text-negative",
+                    )}
+                  >
+                    {kpi.value}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{kpi.sub}</p>
+                </CardContent>
+              </Card>
+            ))}
       </div>
 
       {/* Portfolio vs Benchmark Chart */}
@@ -122,47 +129,51 @@ export default function AnalyticsPage() {
       </Card>
 
       {/* Performance by Period */}
-      <Card>
-        <CardHeader className="pb-2 pt-5 px-5">
-          <CardTitle className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Performance by Period
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-5 pb-5">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/60">
-                  {["Period", "Return", "Benchmark", "Alpha", "Sharpe", "Volatility", "Max DD"].map((h) => (
-                    <th key={h} className="pb-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground first:pl-0 last:pr-0 px-3">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {MOCK_PERFORMANCE.map((p) => (
-                  <tr key={p.period} className="hover:bg-muted/40 transition-colors">
-                    <td className="py-3 pl-0 pr-3 font-semibold text-[13px]">{p.period}</td>
-                    <td className={cn("py-3 px-3 text-[13px] font-semibold", p.return_percent >= 0 ? "text-positive" : "text-negative")}>
-                      {p.return_percent >= 0 ? "+" : ""}{p.return_percent.toFixed(2)}%
-                    </td>
-                    <td className="py-3 px-3 text-[13px] text-muted-foreground">
-                      +{p.benchmark_return_percent.toFixed(2)}%
-                    </td>
-                    <td className={cn("py-3 px-3 text-[13px] font-medium", p.alpha >= 0 ? "text-positive" : "text-negative")}>
-                      {p.alpha >= 0 ? "+" : ""}{p.alpha.toFixed(2)}%
-                    </td>
-                    <td className="py-3 px-3 text-[13px]">{p.sharpe_ratio.toFixed(2)}</td>
-                    <td className="py-3 px-3 text-[13px]">{p.volatility.toFixed(1)}%</td>
-                    <td className="py-3 pl-3 pr-0 text-[13px] text-negative">{p.max_drawdown.toFixed(2)}%</td>
+      {isLoading ? (
+        <TableSkeleton rows={5} cols={7} />
+      ) : (
+        <Card>
+          <CardHeader className="pb-2 pt-5 px-5">
+            <CardTitle className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Performance by Period
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/60">
+                    {["Period", "Return", "Benchmark", "Alpha", "Sharpe", "Volatility", "Max DD"].map((h) => (
+                      <th key={h} className="pb-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground first:pl-0 last:pr-0 px-3">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {performance.map((p) => (
+                    <tr key={p.period} className="hover:bg-muted/40 transition-colors">
+                      <td className="py-3 pl-0 pr-3 font-semibold text-[13px]">{p.period}</td>
+                      <td className={cn("py-3 px-3 text-[13px] font-semibold", p.return_percent >= 0 ? "text-positive" : "text-negative")}>
+                        {p.return_percent >= 0 ? "+" : ""}{p.return_percent.toFixed(2)}%
+                      </td>
+                      <td className="py-3 px-3 text-[13px] text-muted-foreground">
+                        +{p.benchmark_return_percent.toFixed(2)}%
+                      </td>
+                      <td className={cn("py-3 px-3 text-[13px] font-medium", p.alpha >= 0 ? "text-positive" : "text-negative")}>
+                        {p.alpha >= 0 ? "+" : ""}{p.alpha.toFixed(2)}%
+                      </td>
+                      <td className="py-3 px-3 text-[13px]">{p.sharpe_ratio.toFixed(2)}</td>
+                      <td className="py-3 px-3 text-[13px]">{p.volatility.toFixed(1)}%</td>
+                      <td className="py-3 pl-3 pr-0 text-[13px] text-negative">{p.max_drawdown.toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

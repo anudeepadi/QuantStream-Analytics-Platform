@@ -1,6 +1,8 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardSkeleton, TableSkeleton } from "@/components/shared/card-skeleton"
+import { usePerformance, usePortfolioSummary } from "@/lib/hooks/use-portfolio"
 import { MOCK_PERFORMANCE, MOCK_PORTFOLIO_SUMMARY } from "@/lib/mock-data/portfolio"
 import { formatCurrency, formatPercent } from "@/lib/utils/format"
 import { cn } from "@/lib/utils"
@@ -42,8 +44,16 @@ function ReturnBar({ portfolio, benchmark, period }: { portfolio: number; benchm
 }
 
 export default function PnlPage() {
-  const totalPnl = MOCK_PORTFOLIO_SUMMARY.total_pnl
-  const dailyPnl = MOCK_PORTFOLIO_SUMMARY.daily_pnl
+  const { data: perfData, isLoading: isPerfLoading } = usePerformance()
+  const { data: summaryData, isLoading: isSummaryLoading } = usePortfolioSummary()
+
+  const performance = perfData ?? MOCK_PERFORMANCE
+  const summary = summaryData ?? MOCK_PORTFOLIO_SUMMARY
+
+  const isLoading = isPerfLoading || isSummaryLoading
+
+  const totalPnl = summary.total_pnl
+  const dailyPnl = summary.daily_pnl
 
   return (
     <div className="space-y-6">
@@ -54,35 +64,45 @@ export default function PnlPage() {
 
       {/* Top KPIs */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Total P&L</p>
-            <p className={cn("text-3xl font-bold", totalPnl >= 0 ? "text-positive" : "text-negative")}>
-              {formatCurrency(totalPnl)}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {formatPercent(MOCK_PORTFOLIO_SUMMARY.total_pnl_percent)} on cost basis
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Daily P&L</p>
-            <p className={cn("text-3xl font-bold", dailyPnl >= 0 ? "text-positive" : "text-negative")}>
-              {formatCurrency(dailyPnl)}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {formatPercent(MOCK_PORTFOLIO_SUMMARY.daily_pnl_percent)} today
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cost Basis</p>
-            <p className="text-3xl font-bold">{formatCurrency(MOCK_PORTFOLIO_SUMMARY.total_cost)}</p>
-            <p className="text-xs text-muted-foreground mt-1">Total invested capital</p>
-          </CardContent>
-        </Card>
+        {isLoading ? (
+          <>
+            <CardSkeleton />
+            <CardSkeleton />
+            <CardSkeleton />
+          </>
+        ) : (
+          <>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Total P&L</p>
+                <p className={cn("text-3xl font-bold", totalPnl >= 0 ? "text-positive" : "text-negative")}>
+                  {formatCurrency(totalPnl)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatPercent(summary.total_pnl_percent)} on cost basis
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Daily P&L</p>
+                <p className={cn("text-3xl font-bold", dailyPnl >= 0 ? "text-positive" : "text-negative")}>
+                  {formatCurrency(dailyPnl)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatPercent(summary.daily_pnl_percent)} today
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cost Basis</p>
+                <p className="text-3xl font-bold">{formatCurrency(summary.total_cost)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Total invested capital</p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Return comparison chart */}
@@ -106,7 +126,7 @@ export default function PnlPage() {
         </CardHeader>
         <CardContent className="px-5 pb-5">
           <div className="space-y-4 mt-2">
-            {MOCK_PERFORMANCE.map((p) => (
+            {performance.map((p) => (
               <ReturnBar
                 key={p.period}
                 period={p.period}
@@ -119,43 +139,47 @@ export default function PnlPage() {
       </Card>
 
       {/* Detailed metrics table */}
-      <Card>
-        <CardHeader className="pb-2 pt-5 px-5">
-          <CardTitle className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Risk Metrics
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-5 pb-5">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/60">
-                  {["Period", "Alpha", "Sharpe Ratio", "Volatility", "Max Drawdown"].map((h) => (
-                    <th key={h} className="pb-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground first:pl-0 last:pr-0 px-3">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {MOCK_PERFORMANCE.map((p) => (
-                  <tr key={p.period} className="hover:bg-muted/40 transition-colors">
-                    <td className="py-3 pl-0 pr-3 font-semibold text-[13px]">{p.period}</td>
-                    <td className={cn("py-3 px-3 text-[13px] font-medium", p.alpha >= 0 ? "text-positive" : "text-negative")}>
-                      {p.alpha >= 0 ? "+" : ""}{p.alpha.toFixed(2)}%
-                    </td>
-                    <td className="py-3 px-3 text-[13px]">{p.sharpe_ratio.toFixed(2)}</td>
-                    <td className="py-3 px-3 text-[13px]">{p.volatility.toFixed(1)}%</td>
-                    <td className="py-3 pl-3 pr-0 text-[13px] text-negative font-medium">
-                      {p.max_drawdown.toFixed(2)}%
-                    </td>
+      {isPerfLoading ? (
+        <TableSkeleton rows={5} cols={5} />
+      ) : (
+        <Card>
+          <CardHeader className="pb-2 pt-5 px-5">
+            <CardTitle className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Risk Metrics
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/60">
+                    {["Period", "Alpha", "Sharpe Ratio", "Volatility", "Max Drawdown"].map((h) => (
+                      <th key={h} className="pb-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground first:pl-0 last:pr-0 px-3">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {performance.map((p) => (
+                    <tr key={p.period} className="hover:bg-muted/40 transition-colors">
+                      <td className="py-3 pl-0 pr-3 font-semibold text-[13px]">{p.period}</td>
+                      <td className={cn("py-3 px-3 text-[13px] font-medium", p.alpha >= 0 ? "text-positive" : "text-negative")}>
+                        {p.alpha >= 0 ? "+" : ""}{p.alpha.toFixed(2)}%
+                      </td>
+                      <td className="py-3 px-3 text-[13px]">{p.sharpe_ratio.toFixed(2)}</td>
+                      <td className="py-3 px-3 text-[13px]">{p.volatility.toFixed(1)}%</td>
+                      <td className="py-3 pl-3 pr-0 text-[13px] text-negative font-medium">
+                        {p.max_drawdown.toFixed(2)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

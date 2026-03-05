@@ -1,8 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { TableSkeleton } from "@/components/shared/card-skeleton"
 import { MOCK_MARKET_OVERVIEW } from "@/lib/mock-data/market"
+import { useMarketOverview } from "@/lib/hooks/use-market-data"
+import { useMarketWebSocket } from "@/lib/hooks/use-websocket"
 import { formatCurrency, formatCompactNumber } from "@/lib/utils/format"
 import { cn } from "@/lib/utils"
 import { TrendingUp, TrendingDown, ChevronUp, ChevronDown } from "lucide-react"
@@ -11,14 +14,40 @@ import type { MarketOverview } from "@/lib/types/market-data"
 type SortKey = keyof MarketOverview
 type SortDir = "asc" | "desc"
 
-const SECTORS = ["All", ...Array.from(new Set(MOCK_MARKET_OVERVIEW.map((m) => m.sector)))]
-
 export default function MarketsPage() {
+  const { data, isLoading } = useMarketOverview()
+  const overview = data ?? MOCK_MARKET_OVERVIEW
+
+  const symbols = useMemo(() => overview.map((m) => m.symbol), [overview])
+  const { prices, isConnected } = useMarketWebSocket(symbols)
+
+  // Merge WebSocket prices into overview: ws price takes precedence when available
+  const merged: readonly MarketOverview[] = useMemo(
+    () =>
+      overview.map((m) => {
+        const ws = prices.get(m.symbol)
+        if (!ws) return m
+        return {
+          ...m,
+          price: ws.close,
+          change: ws.change,
+          change_percent: ws.change_percent,
+          volume: ws.volume,
+        }
+      }),
+    [overview, prices],
+  )
+
+  const sectors = useMemo(
+    () => ["All", ...Array.from(new Set(merged.map((m) => m.sector)))],
+    [merged],
+  )
+
   const [sector, setSector] = useState("All")
   const [sortKey, setSortKey] = useState<SortKey>("market_cap")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  const filtered = MOCK_MARKET_OVERVIEW.filter((m) => sector === "All" || m.sector === sector)
+  const filtered = merged.filter((m) => sector === "All" || m.sector === sector)
   const sorted = [...filtered].sort((a, b) => {
     const av = a[sortKey]
     const bv = b[sortKey]
@@ -39,8 +68,8 @@ export default function MarketsPage() {
     }
   }
 
-  const advancing = MOCK_MARKET_OVERVIEW.filter((m) => m.change_percent >= 0).length
-  const declining = MOCK_MARKET_OVERVIEW.filter((m) => m.change_percent < 0).length
+  const advancing = merged.filter((m) => m.change_percent >= 0).length
+  const declining = merged.filter((m) => m.change_percent < 0).length
 
   return (
     <div className="space-y-6">
@@ -59,8 +88,14 @@ export default function MarketsPage() {
           <span className="h-2 w-2 rounded-full bg-negative" />
           {declining} declining
         </span>
+        {isConnected && (
+          <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            Live
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
-          {SECTORS.map((s) => (
+          {sectors.map((s) => (
             <button
               key={s}
               onClick={() => setSector(s)}
@@ -78,93 +113,97 @@ export default function MarketsPage() {
       </div>
 
       {/* Market table */}
-      <Card>
-        <CardHeader className="pb-2 pt-5 px-5">
-          <CardTitle className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Market Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-5 pb-5">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/60">
-                  {[
-                    { label: "Symbol", key: "symbol" as SortKey },
-                    { label: "Price", key: "price" as SortKey },
-                    { label: "Change", key: "change_percent" as SortKey },
-                    { label: "Volume", key: "volume" as SortKey },
-                    { label: "Market Cap", key: "market_cap" as SortKey },
-                    { label: "Sector", key: "sector" as SortKey },
-                  ].map(({ label, key }) => (
-                    <th
-                      key={key}
-                      onClick={() => handleSort(key)}
-                      className="pb-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground first:pl-0 last:pr-0 px-3 cursor-pointer select-none hover:text-foreground transition-colors"
-                    >
-                      <span className="flex items-center gap-1">
-                        {label}
-                        {sortKey === key ? (
-                          sortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                        ) : null}
-                      </span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {sorted.map((m) => {
-                  const isPositive = m.change_percent >= 0
-                  return (
-                    <tr key={m.symbol} className="hover:bg-muted/40 transition-colors">
-                      <td className="py-3.5 pl-0 pr-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted text-[11px] font-bold text-muted-foreground">
-                            {m.symbol.slice(0, 2)}
-                          </div>
-                          <div>
-                            <p className="text-[13px] font-semibold leading-none">{m.symbol}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5 leading-none truncate max-w-[100px]">
-                              {m.name}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-3 text-[13px] font-semibold">{formatCurrency(m.price)}</td>
-                      <td className="py-3.5 px-3">
-                        <div className="flex items-center gap-1">
-                          {isPositive ? (
-                            <TrendingUp className="h-3 w-3 text-positive" />
-                          ) : (
-                            <TrendingDown className="h-3 w-3 text-negative" />
-                          )}
-                          <span className={cn("text-[13px] font-semibold", isPositive ? "text-positive" : "text-negative")}>
-                            {isPositive ? "+" : ""}{m.change_percent.toFixed(2)}%
-                          </span>
-                          <span className={cn("text-[11px] ml-1", isPositive ? "text-positive/60" : "text-negative/60")}>
-                            ({isPositive ? "+" : ""}{m.change.toFixed(2)})
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-3 text-[13px] text-muted-foreground">
-                        {formatCompactNumber(m.volume)}
-                      </td>
-                      <td className="py-3.5 px-3 text-[13px] font-medium">
-                        ${formatCompactNumber(m.market_cap)}
-                      </td>
-                      <td className="py-3.5 pl-3 pr-0">
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                          {m.sector}
+      {isLoading ? (
+        <TableSkeleton rows={8} cols={6} />
+      ) : (
+        <Card>
+          <CardHeader className="pb-2 pt-5 px-5">
+            <CardTitle className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Market Overview
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/60">
+                    {[
+                      { label: "Symbol", key: "symbol" as SortKey },
+                      { label: "Price", key: "price" as SortKey },
+                      { label: "Change", key: "change_percent" as SortKey },
+                      { label: "Volume", key: "volume" as SortKey },
+                      { label: "Market Cap", key: "market_cap" as SortKey },
+                      { label: "Sector", key: "sector" as SortKey },
+                    ].map(({ label, key }) => (
+                      <th
+                        key={key}
+                        onClick={() => handleSort(key)}
+                        className="pb-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground first:pl-0 last:pr-0 px-3 cursor-pointer select-none hover:text-foreground transition-colors"
+                      >
+                        <span className="flex items-center gap-1">
+                          {label}
+                          {sortKey === key ? (
+                            sortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                          ) : null}
                         </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {sorted.map((m) => {
+                    const isPositive = m.change_percent >= 0
+                    return (
+                      <tr key={m.symbol} className="hover:bg-muted/40 transition-colors">
+                        <td className="py-3.5 pl-0 pr-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted text-[11px] font-bold text-muted-foreground">
+                              {m.symbol.slice(0, 2)}
+                            </div>
+                            <div>
+                              <p className="text-[13px] font-semibold leading-none">{m.symbol}</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 leading-none truncate max-w-[100px]">
+                                {m.name}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-3 text-[13px] font-semibold">{formatCurrency(m.price)}</td>
+                        <td className="py-3.5 px-3">
+                          <div className="flex items-center gap-1">
+                            {isPositive ? (
+                              <TrendingUp className="h-3 w-3 text-positive" />
+                            ) : (
+                              <TrendingDown className="h-3 w-3 text-negative" />
+                            )}
+                            <span className={cn("text-[13px] font-semibold", isPositive ? "text-positive" : "text-negative")}>
+                              {isPositive ? "+" : ""}{m.change_percent.toFixed(2)}%
+                            </span>
+                            <span className={cn("text-[11px] ml-1", isPositive ? "text-positive/60" : "text-negative/60")}>
+                              ({isPositive ? "+" : ""}{m.change.toFixed(2)})
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-3 text-[13px] text-muted-foreground">
+                          {formatCompactNumber(m.volume)}
+                        </td>
+                        <td className="py-3.5 px-3 text-[13px] font-medium">
+                          ${formatCompactNumber(m.market_cap)}
+                        </td>
+                        <td className="py-3.5 pl-3 pr-0">
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                            {m.sector}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

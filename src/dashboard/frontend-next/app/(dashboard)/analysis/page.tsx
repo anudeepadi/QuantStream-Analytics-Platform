@@ -2,30 +2,30 @@
 
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardSkeleton } from "@/components/shared/card-skeleton"
 import { MOCK_MARKET_OVERVIEW } from "@/lib/mock-data/market"
+import { useMarketOverview, useTechnicalIndicators } from "@/lib/hooks/use-market-data"
 import { cn } from "@/lib/utils"
 import { TrendingUp, TrendingDown, Minus } from "lucide-react"
 
-const SYMBOLS = MOCK_MARKET_OVERVIEW.map((m) => m.symbol)
-
-// Static technical indicator mock data per symbol
-function getIndicators(symbol: string) {
+function getIndicators(symbol: string, overview: readonly { readonly symbol: string; readonly price: number }[]) {
   const seed = symbol.charCodeAt(0) + symbol.charCodeAt(1)
+  const price = overview.find((m) => m.symbol === symbol)?.price ?? 100
   return {
     rsi: 30 + ((seed * 7) % 50),
     macd: ((seed % 20) - 10) * 0.3,
     signal: ((seed % 16) - 8) * 0.3,
-    sma20: MOCK_MARKET_OVERVIEW.find((m) => m.symbol === symbol)?.price ?? 100 * (0.9 + (seed % 10) * 0.02),
-    sma50: MOCK_MARKET_OVERVIEW.find((m) => m.symbol === symbol)?.price ?? 100 * (0.85 + (seed % 8) * 0.02),
-    bbUpper: (MOCK_MARKET_OVERVIEW.find((m) => m.symbol === symbol)?.price ?? 100) * 1.05,
-    bbLower: (MOCK_MARKET_OVERVIEW.find((m) => m.symbol === symbol)?.price ?? 100) * 0.95,
+    sma20: price * (0.9 + (seed % 10) * 0.02),
+    sma50: price * (0.85 + (seed % 8) * 0.02),
+    bbUpper: price * 1.05,
+    bbLower: price * 0.95,
     adx: 15 + (seed % 40),
     cci: -100 + ((seed * 3) % 200),
     stochK: 10 + (seed % 80),
   }
 }
 
-function SignalBadge({ signal }: { signal: "buy" | "sell" | "neutral" }) {
+function SignalBadge({ signal }: { readonly signal: "buy" | "sell" | "neutral" }) {
   return (
     <span className={cn(
       "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
@@ -60,8 +60,7 @@ function smaSignal(price: number, sma: number): "buy" | "sell" | "neutral" {
   return "neutral"
 }
 
-// Gauge component for RSI
-function RsiGauge({ value }: { value: number }) {
+function RsiGauge({ value }: { readonly value: number }) {
   const pct = Math.min(Math.max(value, 0), 100)
   const color = pct < 30 ? "bg-positive" : pct > 70 ? "bg-negative" : "bg-yellow-400"
   return (
@@ -72,7 +71,6 @@ function RsiGauge({ value }: { value: number }) {
         <span className="text-muted-foreground">Overbought</span>
       </div>
       <div className="h-2 rounded-full bg-muted overflow-hidden relative">
-        {/* Zone markers */}
         <div className="absolute left-[30%] top-0 bottom-0 w-px bg-border/60" />
         <div className="absolute left-[70%] top-0 bottom-0 w-px bg-border/60" />
         <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
@@ -83,9 +81,34 @@ function RsiGauge({ value }: { value: number }) {
 
 export default function AnalysisPage() {
   const [symbol, setSymbol] = useState("AAPL")
-  const ind = getIndicators(symbol)
-  const current = MOCK_MARKET_OVERVIEW.find((m) => m.symbol === symbol)
+
+  const { data: apiOverview } = useMarketOverview()
+  const { data: apiIndicators, isLoading: indLoading } = useTechnicalIndicators(symbol)
+
+  const overview = apiOverview ?? MOCK_MARKET_OVERVIEW
+  const symbols = overview.map((m) => m.symbol)
+
+  const fallback = getIndicators(symbol, overview)
+  const current = overview.find((m) => m.symbol === symbol)
   const price = current?.price ?? 100
+
+  // Overlay API indicator values onto fallback when available
+  const apiMap: Record<string, number> = {}
+  if (apiIndicators?.length) {
+    for (const i of apiIndicators) apiMap[i.name] = i.value
+  }
+  const ind = {
+    rsi: apiMap.RSI ?? fallback.rsi,
+    macd: apiMap.MACD ?? fallback.macd,
+    signal: fallback.signal,
+    sma20: apiMap.SMA_20 ?? fallback.sma20,
+    sma50: apiMap.SMA_50 ?? fallback.sma50,
+    bbUpper: apiMap.BOLLINGER_UPPER ?? fallback.bbUpper,
+    bbLower: apiMap.BOLLINGER_LOWER ?? fallback.bbLower,
+    adx: fallback.adx,
+    cci: fallback.cci,
+    stochK: fallback.stochK,
+  }
 
   const INDICATORS = [
     {
@@ -152,7 +175,7 @@ export default function AnalysisPage() {
 
       {/* Symbol selector */}
       <div className="flex flex-wrap items-center gap-1.5">
-        {SYMBOLS.map((s) => (
+        {symbols.map((s) => (
           <button
             key={s}
             onClick={() => setSymbol(s)}
@@ -169,41 +192,48 @@ export default function AnalysisPage() {
       </div>
 
       {/* Overall signal + RSI gauge */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Overall Signal · {symbol}
-            </p>
-            <div className="flex items-center gap-3 mb-3">
-              <SignalBadge signal={overallSignal} />
-              <span className="text-[13px] text-muted-foreground">
-                {buys}B / {neutrals}N / {sells}S from {INDICATORS.length} indicators
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
-                <div className="h-full flex">
-                  <div className="bg-positive" style={{ width: `${(buys / INDICATORS.length) * 100}%` }} />
-                  <div className="bg-muted-foreground/30" style={{ width: `${(neutrals / INDICATORS.length) * 100}%` }} />
-                  <div className="bg-negative" style={{ width: `${(sells / INDICATORS.length) * 100}%` }} />
+      {indLoading && !apiIndicators ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Card>
+            <CardContent className="p-5">
+              <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                Overall Signal · {symbol}
+              </p>
+              <div className="flex items-center gap-3 mb-3">
+                <SignalBadge signal={overallSignal} />
+                <span className="text-[13px] text-muted-foreground">
+                  {buys}B / {neutrals}N / {sells}S from {INDICATORS.length} indicators
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full flex">
+                    <div className="bg-positive" style={{ width: `${(buys / INDICATORS.length) * 100}%` }} />
+                    <div className="bg-muted-foreground/30" style={{ width: `${(neutrals / INDICATORS.length) * 100}%` }} />
+                    <div className="bg-negative" style={{ width: `${(sells / INDICATORS.length) * 100}%` }} />
+                  </div>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              RSI (14)
-            </p>
-            <RsiGauge value={ind.rsi} />
-            <p className="text-[11px] text-muted-foreground mt-2">
-              {ind.rsi < 30 ? "Oversold — potential reversal opportunity" : ind.rsi > 70 ? "Overbought — consider taking profit" : "Neutral — no extreme reading"}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-5">
+              <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                RSI (14)
+              </p>
+              <RsiGauge value={ind.rsi} />
+              <p className="text-[11px] text-muted-foreground mt-2">
+                {ind.rsi < 30 ? "Oversold — potential reversal opportunity" : ind.rsi > 70 ? "Overbought — consider taking profit" : "Neutral — no extreme reading"}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Indicator grid */}
       <Card>
@@ -213,16 +243,24 @@ export default function AnalysisPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {INDICATORS.map((ind) => (
-              <div key={ind.name} className="rounded-xl border border-border/60 bg-muted/30 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">{ind.name}</p>
-                <p className="text-[15px] font-bold mb-2">{ind.value}</p>
-                <SignalBadge signal={ind.signal} />
-                <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">{ind.desc}</p>
-              </div>
-            ))}
-          </div>
+          {indLoading && !apiIndicators ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <CardSkeleton key={i} />
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {INDICATORS.map((indicator) => (
+                <div key={indicator.name} className="rounded-xl border border-border/60 bg-muted/30 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">{indicator.name}</p>
+                  <p className="text-[15px] font-bold mb-2">{indicator.value}</p>
+                  <SignalBadge signal={indicator.signal} />
+                  <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">{indicator.desc}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

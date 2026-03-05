@@ -2,11 +2,17 @@
 
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardSkeleton, TableSkeleton } from "@/components/shared/card-skeleton";
 import {
   MOCK_ALERTS,
   MOCK_ALERT_RULES,
   MOCK_ALERT_STATISTICS,
 } from "@/lib/mock-data/alerts";
+import {
+  useAlerts,
+  useAlertRules,
+  useAlertStatistics,
+} from "@/lib/hooks/use-alerts";
 import { cn } from "@/lib/utils";
 import {
   Bell,
@@ -125,14 +131,20 @@ function AlertRow({ alert }: { readonly alert: Alert }) {
 export default function AlertsPage() {
   const [tab, setTab] = useState<"active" | "all">("active");
 
+  const { data: apiAlerts, isLoading: alertsLoading } = useAlerts();
+  const { data: apiRules, isLoading: rulesLoading } = useAlertRules();
+  const { data: apiStats, isLoading: statsLoading } = useAlertStatistics();
+
+  const alerts = apiAlerts ?? MOCK_ALERTS;
+  const rules = apiRules ?? MOCK_ALERT_RULES;
+  const stats = apiStats ?? MOCK_ALERT_STATISTICS;
+
   const displayed =
     tab === "active"
-      ? MOCK_ALERTS.filter(
+      ? alerts.filter(
           (a) => a.status === "active" || a.status === "acknowledged",
         )
-      : MOCK_ALERTS;
-
-  const stats = MOCK_ALERT_STATISTICS;
+      : alerts;
 
   return (
     <div className="space-y-6">
@@ -150,76 +162,84 @@ export default function AlertsPage() {
       </div>
 
       {/* Stats row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          {
-            label: "Total Alerts",
-            value: stats.total_alerts,
-            icon: Bell,
-            sub: "all time",
-          },
-          {
-            label: "Active",
-            value: stats.active_alerts,
-            icon: AlertTriangle,
-            sub: "currently active",
-            accent: true,
-          },
-          {
-            label: "Triggered Today",
-            value: stats.triggered_today,
-            icon: CheckCircle,
-            sub: "since midnight",
-          },
-          {
-            label: "Critical",
-            value: stats.critical_count,
-            icon: XCircle,
-            sub: "need attention",
-            danger: true,
-          },
-        ].map((s) => (
-          <Card key={s.label}>
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between mb-3">
-                <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {s.label}
-                </p>
-                <div
+      {statsLoading && !apiStats ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            {
+              label: "Total Alerts",
+              value: stats.total_alerts,
+              icon: Bell,
+              sub: "all time",
+            },
+            {
+              label: "Active",
+              value: stats.active_alerts,
+              icon: AlertTriangle,
+              sub: "currently active",
+              accent: true,
+            },
+            {
+              label: "Triggered Today",
+              value: stats.triggered_today,
+              icon: CheckCircle,
+              sub: "since midnight",
+            },
+            {
+              label: "Critical",
+              value: stats.critical_count,
+              icon: XCircle,
+              sub: "need attention",
+              danger: true,
+            },
+          ].map((s) => (
+            <Card key={s.label}>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {s.label}
+                  </p>
+                  <div
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-xl",
+                      s.danger
+                        ? "bg-negative/10"
+                        : s.accent
+                          ? "bg-yellow-500/10"
+                          : "bg-primary/10",
+                    )}
+                  >
+                    <s.icon
+                      className={cn(
+                        "h-4 w-4",
+                        s.danger
+                          ? "text-negative"
+                          : s.accent
+                            ? "text-yellow-600"
+                            : "text-primary",
+                      )}
+                    />
+                  </div>
+                </div>
+                <p
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-xl",
-                    s.danger
-                      ? "bg-negative/10"
-                      : s.accent
-                        ? "bg-yellow-500/10"
-                        : "bg-primary/10",
+                    "text-2xl font-bold",
+                    s.danger && s.value > 0 ? "text-negative" : "",
                   )}
                 >
-                  <s.icon
-                    className={cn(
-                      "h-4 w-4",
-                      s.danger
-                        ? "text-negative"
-                        : s.accent
-                          ? "text-yellow-600"
-                          : "text-primary",
-                    )}
-                  />
-                </div>
-              </div>
-              <p
-                className={cn(
-                  "text-2xl font-bold",
-                  s.danger && s.value > 0 ? "text-negative" : "",
-                )}
-              >
-                {s.value}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                  {s.value}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Alert feed */}
       <Card>
@@ -247,7 +267,9 @@ export default function AlertsPage() {
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-2">
-          {displayed.length === 0 ? (
+          {alertsLoading && !apiAlerts ? (
+            <TableSkeleton rows={4} />
+          ) : displayed.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No alerts to display.
             </p>
@@ -265,57 +287,61 @@ export default function AlertsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-5">
-          <div className="space-y-3">
-            {MOCK_ALERT_RULES.map((rule) => (
-              <div
-                key={rule.id}
-                className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-4 py-3"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      rule.enabled ? "bg-positive" : "bg-muted-foreground",
-                    )}
-                  />
-                  <div>
-                    <p className="text-[13px] font-semibold">{rule.name}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {rule.condition} · threshold: {rule.threshold}
-                      {rule.symbol ? ` · ${rule.symbol}` : ""}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize",
-                      rule.type === "price"
-                        ? "bg-primary/10 text-primary"
-                        : rule.type === "volume"
-                          ? "bg-yellow-500/10 text-yellow-600"
-                          : "bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {rule.type}
-                  </span>
-                  <div
-                    className={cn(
-                      "h-5 w-9 rounded-full flex items-center transition-colors",
-                      rule.enabled ? "bg-primary" : "bg-muted",
-                    )}
-                  >
+          {rulesLoading && !apiRules ? (
+            <TableSkeleton rows={4} />
+          ) : (
+            <div className="space-y-3">
+              {rules.map((rule) => (
+                <div
+                  key={rule.id}
+                  className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-4 py-3"
+                >
+                  <div className="flex items-center gap-3">
                     <div
                       className={cn(
-                        "h-4 w-4 rounded-full bg-white shadow transition-transform mx-0.5",
-                        rule.enabled ? "translate-x-4" : "translate-x-0",
+                        "h-2 w-2 rounded-full",
+                        rule.enabled ? "bg-positive" : "bg-muted-foreground",
                       )}
                     />
+                    <div>
+                      <p className="text-[13px] font-semibold">{rule.name}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {rule.condition} · threshold: {rule.threshold}
+                        {rule.symbol ? ` · ${rule.symbol}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize",
+                        rule.type === "price"
+                          ? "bg-primary/10 text-primary"
+                          : rule.type === "volume"
+                            ? "bg-yellow-500/10 text-yellow-600"
+                            : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {rule.type}
+                    </span>
+                    <div
+                      className={cn(
+                        "h-5 w-9 rounded-full flex items-center transition-colors",
+                        rule.enabled ? "bg-primary" : "bg-muted",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "h-4 w-4 rounded-full bg-white shadow transition-transform mx-0.5",
+                          rule.enabled ? "translate-x-4" : "translate-x-0",
+                        )}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
