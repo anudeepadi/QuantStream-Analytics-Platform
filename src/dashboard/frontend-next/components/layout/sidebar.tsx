@@ -1,13 +1,17 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
-import { useAppStore } from "@/lib/store/app-store"
-import { useAuth } from "@/lib/auth/auth-context"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+import { useAppStore } from "@/lib/store/app-store";
+import { useAuth } from "@/lib/auth/auth-context";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Activity,
   LayoutDashboard,
@@ -23,18 +27,18 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-} from "lucide-react"
-import type { LucideIcon } from "lucide-react"
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 interface NavItem {
-  readonly title: string
-  readonly href: string
-  readonly icon: LucideIcon
+  readonly title: string;
+  readonly href: string;
+  readonly icon: LucideIcon;
 }
 
 interface NavGroup {
-  readonly label: string
-  readonly items: readonly NavItem[]
+  readonly label: string;
+  readonly items: readonly NavItem[];
 }
 
 const NAVIGATION: readonly NavGroup[] = [
@@ -63,9 +67,7 @@ const NAVIGATION: readonly NavGroup[] = [
   },
   {
     label: "Analysis",
-    items: [
-      { title: "Technical", href: "/analysis", icon: LineChart },
-    ],
+    items: [{ title: "Technical", href: "/analysis", icon: LineChart }],
   },
   {
     label: "Alerts",
@@ -78,70 +80,75 @@ const NAVIGATION: readonly NavGroup[] = [
       { title: "Settings", href: "/settings", icon: Settings },
     ],
   },
-]
+];
 
 function NavLink({
   item,
   isActive,
   collapsed,
 }: {
-  readonly item: NavItem
-  readonly isActive: boolean
-  readonly collapsed: boolean
+  readonly item: NavItem;
+  readonly isActive: boolean;
+  readonly collapsed: boolean;
 }) {
-  const Icon = item.icon
+  const Icon = item.icon;
 
   const link = (
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150",
+        "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.97]",
         isActive
           ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
       {!collapsed && <span>{item.title}</span>}
     </Link>
-  )
+  );
 
   if (collapsed) {
     return (
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>{link}</TooltipTrigger>
-        <TooltipContent side="right">
-          {item.title}
-        </TooltipContent>
+        <TooltipContent side="right">{item.title}</TooltipContent>
       </Tooltip>
-    )
+    );
   }
 
-  return link
+  return link;
 }
 
 export function Sidebar() {
-  const pathname = usePathname()
-  const collapsed = useAppStore((s) => s.sidebarCollapsed)
-  const toggleSidebar = useAppStore((s) => s.toggleSidebar)
-  const { user } = useAuth()
+  const pathname = usePathname();
+  const collapsed = useAppStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const { user } = useAuth();
 
   const initials = user?.full_name
-    ? user.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-    : user?.username?.slice(0, 2).toUpperCase() ?? "QS"
+    ? user.full_name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : (user?.username?.slice(0, 2).toUpperCase() ?? "QS");
 
   return (
     <aside
       className={cn(
         "flex h-screen flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300",
-        collapsed ? "w-16" : "w-60"
+        collapsed ? "w-16" : "w-60",
       )}
     >
       {/* Logo */}
-      <div className={cn(
-        "flex h-16 shrink-0 items-center border-b border-sidebar-border",
-        collapsed ? "justify-center px-0" : "gap-3 px-5"
-      )}>
+      <div
+        className={cn(
+          "flex h-16 shrink-0 items-center border-b border-sidebar-border",
+          collapsed ? "justify-center px-0" : "gap-3 px-5",
+        )}
+      >
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary shadow-sm">
           <Activity className="h-4 w-4 text-primary-foreground" />
         </div>
@@ -199,8 +206,8 @@ export function Sidebar() {
         <button
           onClick={toggleSidebar}
           className={cn(
-            "flex w-full items-center justify-center rounded-xl p-2 text-muted-foreground hover:bg-accent hover:text-foreground transition-all duration-150",
-            collapsed && "aspect-square"
+            "flex w-full items-center justify-center rounded-xl p-2 text-muted-foreground hover:bg-accent hover:text-foreground active:scale-[0.95] transition-all duration-150",
+            collapsed && "aspect-square",
           )}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -215,5 +222,5 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
-  )
+  );
 }

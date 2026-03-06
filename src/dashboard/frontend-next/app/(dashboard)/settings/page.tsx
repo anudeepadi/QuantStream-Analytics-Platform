@@ -11,34 +11,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { User, Bell, Key, Palette, Save, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-context";
-
-function Toggle({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      onClick={onToggle}
-      className={cn(
-        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
-        enabled ? "bg-primary" : "bg-muted",
-      )}
-    >
-      <span
-        className={cn(
-          "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
-          enabled ? "translate-x-4" : "translate-x-0.5",
-        )}
-      />
-    </button>
-  );
-}
 
 const NOTIFICATION_SETTINGS = [
   {
@@ -213,9 +189,11 @@ export default function SettingsPage() {
                     {setting.desc}
                   </p>
                 </div>
-                <Toggle
-                  enabled={notifications[setting.id] ?? false}
-                  onToggle={() => toggleNotification(setting.id)}
+                <Switch
+                  checked={notifications[setting.id] ?? false}
+                  onCheckedChange={() => toggleNotification(setting.id)}
+                  size="sm"
+                  aria-label={setting.label}
                 />
               </div>
             ))}
@@ -312,7 +290,7 @@ export default function SettingsPage() {
                   key={t}
                   onClick={() => setTheme(t)}
                   className={cn(
-                    "flex-1 rounded-xl border py-3 text-[12px] font-semibold capitalize transition-colors",
+                    "flex-1 rounded-xl border py-3 text-[12px] font-semibold capitalize transition-all active:scale-[0.97]",
                     theme === t
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border text-muted-foreground hover:text-foreground hover:bg-muted",

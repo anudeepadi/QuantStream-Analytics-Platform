@@ -13,6 +13,7 @@ import {
   useAlertRules,
   useAlertStatistics,
 } from "@/lib/hooks/use-alerts";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   Bell,
@@ -155,7 +156,7 @@ export default function AlertsPage() {
             Monitor and manage your alert rules.
           </p>
         </div>
-        <button className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+        <button className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 active:scale-[0.97] transition-all">
           <Plus className="h-3.5 w-3.5" />
           New Alert
         </button>
@@ -254,7 +255,7 @@ export default function AlertsPage() {
                   key={t}
                   onClick={() => setTab(t)}
                   className={cn(
-                    "rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-colors",
+                    "rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-all active:scale-[0.97]",
                     tab === t
                       ? "bg-primary/15 text-primary"
                       : "text-muted-foreground hover:text-foreground",
@@ -324,19 +325,11 @@ export default function AlertsPage() {
                     >
                       {rule.type}
                     </span>
-                    <div
-                      className={cn(
-                        "h-5 w-9 rounded-full flex items-center transition-colors",
-                        rule.enabled ? "bg-primary" : "bg-muted",
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "h-4 w-4 rounded-full bg-white shadow transition-transform mx-0.5",
-                          rule.enabled ? "translate-x-4" : "translate-x-0",
-                        )}
-                      />
-                    </div>
+                    <Switch
+                      checked={rule.enabled}
+                      size="sm"
+                      aria-label={`Toggle ${rule.name}`}
+                    />
                   </div>
                 </div>
               ))}

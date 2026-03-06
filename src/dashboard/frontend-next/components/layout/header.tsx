@@ -1,20 +1,29 @@
-"use client"
+"use client";
 
-import { useTheme } from "next-themes"
-import { useAuth } from "@/lib/auth/auth-context"
-import { usePathname } from "next/navigation"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
+import { useTheme } from "next-themes";
+import { useAuth } from "@/lib/auth/auth-context";
+import { usePathname } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Search, Sun, Moon, Bell, User, LogOut, Settings, Download } from "lucide-react"
+} from "@/components/ui/dropdown-menu";
+import {
+  Search,
+  Sun,
+  Moon,
+  Bell,
+  User,
+  LogOut,
+  Settings,
+  Download,
+} from "lucide-react";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -29,18 +38,18 @@ const PAGE_TITLES: Record<string, string> = {
   "/alerts": "Alerts",
   "/system": "System Metrics",
   "/settings": "Settings",
-}
+};
 
 export function Header() {
-  const { theme, setTheme } = useTheme()
-  const { user, logout } = useAuth()
-  const pathname = usePathname()
+  const { theme, setTheme } = useTheme();
+  const { user, logout } = useAuth();
+  const pathname = usePathname();
 
   const toggleTheme = () => {
-    setTheme(theme === "dark" ? "light" : "dark")
-  }
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
 
-  const pageTitle = PAGE_TITLES[pathname] ?? "Dashboard"
+  const pageTitle = PAGE_TITLES[pathname] ?? "Dashboard";
 
   const initials = user?.full_name
     ? user.full_name
@@ -49,13 +58,15 @@ export function Header() {
         .join("")
         .toUpperCase()
         .slice(0, 2)
-    : user?.username?.slice(0, 2).toUpperCase() ?? "QS"
+    : (user?.username?.slice(0, 2).toUpperCase() ?? "QS");
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-card px-6 gap-4">
       {/* Left: Page title */}
       <div className="shrink-0">
-        <h2 className="text-[15px] font-semibold text-foreground leading-none">{pageTitle}</h2>
+        <h2 className="text-[15px] font-semibold text-foreground leading-none">
+          {pageTitle}
+        </h2>
       </div>
 
       {/* Center: Search */}
@@ -73,7 +84,11 @@ export function Header() {
       {/* Right: Actions */}
       <div className="flex items-center gap-1 shrink-0">
         {/* Export */}
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-medium rounded-lg hidden sm:flex">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 text-xs font-medium rounded-lg hidden sm:flex"
+        >
           <Download className="h-3.5 w-3.5" />
           Export
         </Button>
@@ -105,7 +120,7 @@ export function Header() {
         {/* User menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-accent transition-colors ml-1">
+            <button className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-accent active:scale-[0.97] transition-all ml-1">
               <Avatar className="h-7 w-7">
                 <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-semibold">
                   {initials}
@@ -126,8 +141,12 @@ export function Header() {
           <DropdownMenuContent align="end" className="w-48 rounded-xl">
             {user && (
               <div className="px-3 py-2 text-sm border-b border-border mb-1">
-                <p className="font-semibold text-[13px]">{user.full_name ?? user.username}</p>
-                <p className="text-[11px] text-muted-foreground">{user.email}</p>
+                <p className="font-semibold text-[13px]">
+                  {user.full_name ?? user.username}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {user.email}
+                </p>
               </div>
             )}
             <DropdownMenuItem className="rounded-lg">
@@ -139,7 +158,10 @@ export function Header() {
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="rounded-lg text-negative focus:text-negative">
+            <DropdownMenuItem
+              onClick={logout}
+              className="rounded-lg text-negative focus:text-negative"
+            >
               <LogOut className="mr-2 h-4 w-4" />
               Log out
             </DropdownMenuItem>
@@ -147,5 +169,5 @@ export function Header() {
         </DropdownMenu>
       </div>
     </header>
-  )
+  );
 }
