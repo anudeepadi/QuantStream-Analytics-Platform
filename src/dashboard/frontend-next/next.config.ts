@@ -1,17 +1,9 @@
 import type { NextConfig } from "next";
 
-const apiTarget = process.env.API_PROXY_TARGET ?? "http://localhost:8000";
-
 const nextConfig: NextConfig = {
-  output: "standalone",
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${apiTarget}/api/:path*`,
-      },
-    ];
-  },
+  output: "export",
+  // Static export: no server-side rewrites. API calls go directly to the backend
+  // via NEXT_PUBLIC_API_BASE_URL (set at build time). Backend must allow CORS.
 };
 
 export default nextConfig;

@@ -1,0 +1,5 @@
+name = "quantstream-dashboard"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "./out"
+# NEXT_PUBLIC_API_BASE_URL is baked into the bundle at build time (not a runtime var).
+# Set it as a GitHub Actions secret and pass it as an env var during `npm run build:cf`.
