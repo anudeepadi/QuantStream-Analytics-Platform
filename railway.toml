@@ -5,7 +5,7 @@ buildTarget = "production"
 
 [deploy]
 # Railway injects $PORT dynamically — override the Dockerfile CMD to use it
-startCommand = "python -m uvicorn src.dashboard.backend.api.main:app --host 0.0.0.0 --port $PORT --workers 4"
+startCommand = "sh -c 'python -m uvicorn src.dashboard.backend.api.main:app --host 0.0.0.0 --port $PORT --workers 4'"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
