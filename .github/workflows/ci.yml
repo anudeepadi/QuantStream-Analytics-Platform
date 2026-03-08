@@ -26,11 +26,13 @@ jobs:
         run: pip install -r requirements.txt pytest pytest-asyncio pytest-mock
 
       - name: Run unit tests
-        # Skip integration/performance tests — they require live services (Kafka, PG, Redis)
+        # Tests live in tests/*/unit/ — no @pytest.mark.unit markers used, filter by path instead
         run: >
-          pytest tests/ -m "unit"
+          pytest tests/ingestion/unit/ tests/etl/ tests/features/ tests/ml/unit/
           --ignore=tests/ingestion/integration
           --ignore=tests/ingestion/performance
+          --ignore=tests/ml/integration
+          --ignore=tests/ml/performance
           -v -p no:cov
 
   # ── Frontend lint + type-check + build ─────────────────────────
