@@ -21,6 +21,7 @@ from .endpoints import market_data, portfolio, alerts, system_metrics, websocket
 from ..services.auth_service import AuthService
 from ..services.database_service import DatabaseService
 from ..services.redis_service import RedisService
+from ..services.finnhub_service import FinnhubService
 from ..models.responses import HealthResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 auth_service = AuthService()
 db_service = DatabaseService()
 redis_service = RedisService()
+finnhub_service = FinnhubService()
 security = HTTPBearer()
 
 @asynccontextmanager
@@ -43,6 +45,7 @@ async def lifespan(app: FastAPI):
     # Initialize services
     await db_service.initialize()
     await redis_service.initialize()
+    await finnhub_service.initialize(redis_service)
 
     # Wire auth service with DB and Redis
     auth_service.set_services(db_service, redis_service)
@@ -51,23 +54,26 @@ async def lifespan(app: FastAPI):
     # Inject services into endpoint modules that need them
     portfolio.set_services(db_service)
     alerts.set_services(db_service)
-    market_data.set_services(redis_service)
+    market_data.set_services(finnhub_service)
 
     # Seed default admin user and demo portfolio if no users exist
     await _seed_default_users(db_service, auth_service)
     await _seed_demo_portfolio(db_service)
 
-    # Start background tasks
+    # Start background tasks — Finnhub WS feeds trade data to our WS manager
+    finnhub_service.on_trade(websocket_manager.on_finnhub_trades)
+    await finnhub_service.start_ws()
     asyncio.create_task(websocket_manager.start_data_streaming())
 
     logger.info("API startup complete")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down QuantStream Dashboard API...")
-    
+
     # Cleanup services
+    await finnhub_service.close()
     await db_service.close()
     await redis_service.close()
     await websocket_manager.stop_data_streaming()
