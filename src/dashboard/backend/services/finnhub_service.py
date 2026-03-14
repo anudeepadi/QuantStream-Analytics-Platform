@@ -353,11 +353,14 @@ class FinnhubService:
         self._trade_callbacks.append(callback)
 
     async def start_ws(self, symbols: list[str] | None = None) -> None:
-        """Connect to Finnhub WebSocket and stream trades."""
+        """Connect to Finnhub WebSocket and stream trades.
+        Only starts once per process (safe with multi-worker uvicorn)."""
         if self._ws_running or not self._api_key:
             return
         self._ws_running = True
         target_symbols = symbols or self.WATCHED_STOCKS
+        # Small random jitter so workers don't all connect simultaneously
+        await asyncio.sleep(asyncio.get_event_loop().time() % 3)
         self._ws_task = asyncio.create_task(self._ws_loop(target_symbols))
 
     async def stop_ws(self) -> None:
@@ -370,11 +373,14 @@ class FinnhubService:
                 pass
 
     async def _ws_loop(self, symbols: list[str]) -> None:
-        """Reconnecting WebSocket loop."""
+        """Reconnecting WebSocket loop with exponential backoff."""
+        backoff = 5
+        max_backoff = 120
         while self._ws_running:
             try:
                 async with websockets.connect(f"{WS_URL}?token={self._api_key}") as ws:
                     logger.info("Finnhub WS connected, subscribing to %d symbols", len(symbols))
+                    backoff = 5  # reset on successful connect
                     for sym in symbols:
                         await ws.send(json.dumps({"type": "subscribe", "symbol": sym}))
 
@@ -388,10 +394,11 @@ class FinnhubService:
                                     logger.error("Trade callback error: %s", exc)
 
             except ConnectionClosed:
-                logger.warning("Finnhub WS disconnected, reconnecting in 3s")
-                await asyncio.sleep(3)
+                logger.warning("Finnhub WS disconnected, reconnecting in %ds", backoff)
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                logger.error("Finnhub WS error: %s, reconnecting in 5s", exc)
-                await asyncio.sleep(5)
+                logger.warning("Finnhub WS error: %s, retry in %ds", exc, backoff)
+
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, max_backoff)
