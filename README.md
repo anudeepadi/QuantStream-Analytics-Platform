@@ -1,301 +1,214 @@
 # QuantStream Analytics Platform
 
-A comprehensive real-time analytics platform for quantitative data processing, machine learning, and financial market analysis.
+**Real-time financial analytics dashboard with live market data, portfolio tracking, and technical analysis.**
 
-## Overview
+**[Live Demo](https://frontend-next-sooty.vercel.app)** | **[API Docs](https://api-production-b5c3.up.railway.app/docs)** | **[API Health](https://api-production-b5c3.up.railway.app/health)**
 
-QuantStream Analytics Platform is a scalable, production-ready system designed for real-time data ingestion, processing, and analysis. Built with modern data engineering practices, it provides a complete solution for quantitative analytics with integrated machine learning capabilities, feature stores, and interactive dashboards.
+> Demo credentials: `admin` / `admin123`
+
+---
+
+## What It Does
+
+QuantStream is a full-stack financial analytics platform that streams real-time stock, crypto, and forex data into an interactive dashboard. Built for portfolio managers, quant analysts, and serious investors who need institutional-grade tools without the Bloomberg terminal price tag.
+
+### Key Features
+
+- **Live Market Data** — Real-time stock quotes from Finnhub API with WebSocket streaming
+- **Historical Charts** — OHLCV candlestick data via Yahoo Finance with interactive time-range selection
+- **Technical Indicators** — RSI, SMA, EMA, MACD, Bollinger Bands computed from real market data
+- **Portfolio Tracking** — Positions, P&L analysis, allocation breakdown with live price updates
+- **Multi-Asset Coverage** — US equities (AAPL, TSLA, NVDA...), crypto (BTC, ETH, SOL), forex (EUR/USD, GBP/USD)
+- **Alert System** — Price targets, volume anomalies, RSI signals, technical breakouts
+- **System Monitoring** — Real-time CPU, memory, network metrics via WebSocket
+- **Auth System** — JWT-based authentication with role-based access (admin, analyst, trader)
 
 ## Architecture
 
-The platform follows a microservices architecture with the following key components:
+```
+                    +-----------------+
+                    |   Vercel CDN    |
+                    |  (Next.js 16)   |
+                    +--------+--------+
+                             |
+                    REST + WebSocket
+                             |
+              +--------------+--------------+
+              |      Railway (Backend)      |
+              |   FastAPI + Uvicorn (4w)    |
+              +---+----------+----------+---+
+                  |          |          |
+           +------+   +-----+-----+   +--------+
+           |Finnhub|   |PostgreSQL |   |  Redis  |
+           |  API  |   | (Railway) |   |(Railway)|
+           +---+---+   +-----------+   +---------+
+               |
+          +----+----+
+          |  Yahoo  |
+          | Finance |
+          +---------+
+```
 
-- **Data Ingestion**: Real-time streaming data ingestion using Apache Kafka
-- **ETL Pipeline**: Scalable data processing with Apache Spark and Delta Lake
-- **Machine Learning**: MLflow-integrated model training and deployment
-- **Feature Store**: Redis-based feature serving with PostgreSQL offline storage
-- **Dashboard**: Interactive Streamlit-based analytics dashboard
-- **Monitoring**: Comprehensive observability with Prometheus and Grafana
-- **API Layer**: FastAPI-based REST services
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Frontend** | Next.js 16, React 19, Tailwind CSS 4, Recharts | Dashboard UI with real-time updates |
+| **State** | TanStack Query, Zustand | Server state caching + client state |
+| **Backend** | FastAPI, Uvicorn, asyncpg, httpx | REST API + WebSocket server |
+| **Data** | Finnhub (quotes), Yahoo Finance (history) | Real-time + historical market data |
+| **Database** | PostgreSQL | Users, positions, transactions, alerts |
+| **Cache** | Redis | API response caching, session tokens |
+| **Auth** | JWT (PyJWT), bcrypt | Token-based authentication |
+| **Deploy** | Vercel (frontend), Railway (backend + DB + Redis) | Production hosting |
 
-## Features
+## Live Demo
 
-- **Real-time Data Processing**: Stream processing with Apache Spark and Kafka
-- **Delta Lake Integration**: ACID transactions and time travel for data lakes
-- **ML Pipeline**: End-to-end machine learning workflow with MLflow
-- **Feature Engineering**: Scalable feature computation and serving
-- **Interactive Dashboards**: Real-time analytics visualization
-- **Monitoring & Alerting**: Production-grade observability
-- **Containerized Deployment**: Docker and Docker Compose support
-- **Infrastructure as Code**: Terraform configurations for cloud deployment
+**Frontend:** https://frontend-next-sooty.vercel.app
 
-## Quick Start
+| Page | What You'll See |
+|------|----------------|
+| `/` | Landing page with platform overview |
+| `/login` | Sign in (admin / admin123) |
+| `/dashboard` | KPIs, portfolio chart, sector performance, top movers |
+| `/markets` | Live stock table with real-time Finnhub quotes |
+| `/markets/historical` | Interactive OHLCV charts for any symbol |
+| `/markets/watchlist` | Curated watchlist with alerts |
+| `/portfolio` | Current positions with live P&L |
+| `/portfolio/pnl` | Profit & loss analysis |
+| `/portfolio/allocation` | Asset allocation breakdown |
+| `/analysis` | Technical indicators (RSI, MACD, Bollinger) |
+| `/alerts` | Active alert rules and history |
+| `/system` | Server metrics (CPU, RAM, network) |
+| `/settings` | User preferences |
 
-### Prerequisites
+**Backend API:** https://api-production-b5c3.up.railway.app
 
-- Docker and Docker Compose
-- Python 3.9+
-- Git
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/auth/login` | POST | JWT authentication |
+| `/api/v1/market-data/overview` | GET | Live quotes for 8 major stocks |
+| `/api/v1/market-data/historical` | POST | Historical OHLCV candles |
+| `/api/v1/market-data/current/{symbol}` | GET | Current price + technical indicators |
+| `/api/v1/portfolio/summary` | GET | Portfolio value, P&L, positions |
+| `/api/v1/portfolio/positions` | GET | All open positions |
+| `/api/v1/alerts/` | GET | Active alerts |
+| `/api/v1/system/metrics` | GET | Server health metrics |
+| `/ws/market-data` | WS | Real-time trade stream |
+| `/docs` | GET | Swagger UI |
 
-### Local Development Setup
+## Tech Stack
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd quantstream-analytics
-   ```
+**Frontend**
+- Next.js 16 (App Router, static export)
+- React 19 with Server Components
+- Tailwind CSS 4 with oklch color space
+- Recharts for data visualization
+- TanStack Query v5 for data fetching
+- Zustand for client state
+- Radix UI primitives (shadcn/ui)
 
-2. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
+**Backend**
+- Python 3.11 + FastAPI
+- asyncpg (async PostgreSQL)
+- Redis for caching (30s quote TTL)
+- Finnhub API (real-time quotes + WebSocket)
+- Yahoo Finance v8 (historical candles)
+- NumPy for technical indicator computation
+- JWT authentication with bcrypt
 
-3. **Start the development environment**
-   ```bash
-   docker-compose up -d
-   ```
+**Infrastructure**
+- Vercel (frontend CDN + edge)
+- Railway (backend + PostgreSQL + Redis)
+- Docker multi-stage builds
+- GitHub Actions CI/CD
 
-4. **Install Python dependencies** (optional, for local development)
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\\Scripts\\activate
-   pip install -r requirements.txt
-   pip install -e .
-   ```
+## Design System
 
-### Accessing Services
+Custom design system built for financial data density:
 
-Once the containers are running, you can access:
+- **Color:** oklch-based sage green palette (hue 142) with semantic positive/negative
+- **Typography:** Plus Jakarta Sans (body) + Geist Mono (data)
+- **Density:** Compact 13px body text, 20px card padding, 4px base unit
+- **Depth:** Borders define structure, cards float with subtle shadows
+- **Components:** 20+ custom components (KPI cards, data tables, chart wrappers, status indicators)
 
-- **API Documentation**: http://localhost:8000/docs
-- **Streamlit Dashboard**: http://localhost:8501
-- **Spark UI**: http://localhost:8080
-- **MLflow UI**: http://localhost:5000
-- **Grafana**: http://localhost:3000 (admin/admin)
-- **Prometheus**: http://localhost:9090
-- **MinIO Console**: http://localhost:9001 (minioadmin/minioadmin)
-- **Jupyter Lab**: http://localhost:8888
-- **Airflow**: http://localhost:8082 (admin/admin)
+## Quick Start (Local Development)
+
+```bash
+# Clone
+git clone https://github.com/anudeepadi/QuantStream-Analytics-Platform.git
+cd QuantStream-Analytics-Platform
+
+# Backend
+pip install -r requirements.txt
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/quantstream
+export REDIS_URL=redis://localhost:6379
+export FINNHUB_API_KEY=your_key_here
+python -m uvicorn src.dashboard.backend.api.main:app --reload
+
+# Frontend
+cd src/dashboard/frontend-next
+npm install
+echo "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000" > .env.local
+npm run dev
+```
+
+## API Examples
+
+```bash
+# Login
+TOKEN=$(curl -s localhost:8000/api/v1/auth/login \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' \
+  | jq -r '.access_token')
+
+# Get live quotes
+curl -s localhost:8000/api/v1/market-data/overview \
+  -H "Authorization: Bearer $TOKEN" | jq '.[0]'
+# → {"symbol":"AAPL","price":253.30,"change_percent":1.27,...}
+
+# Get historical candles
+curl -s localhost:8000/api/v1/market-data/historical \
+  -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"AAPL","start_date":"2025-12-01T00:00:00","end_date":"2026-03-16T00:00:00","interval":"1d"}'
+# → [{"date":"2025-12-01","open":280.15,"close":274.11,...}, ...]
+
+# Get technical indicators
+curl -s localhost:8000/api/v1/market-data/current/AAPL?include_indicators=true \
+  -H "Authorization: Bearer $TOKEN" | jq '.indicators'
+# → [{"name":"RSI_14","value":23.69,"signal":"buy"}, ...]
+```
 
 ## Project Structure
 
 ```
-quantstream-analytics/
-├── src/                          # Main source code
-│   ├── ingestion/               # Data ingestion components
-│   ├── etl/                     # ETL pipeline code
-│   ├── ml/                      # Machine learning models
-│   ├── features/                # Feature store
-│   ├── dashboard/               # Dashboard and UI
-│   └── monitoring/              # Observability
-├── infrastructure/              # Terraform IaC
-├── tests/                       # Testing suite
-│   ├── unit/                   # Unit tests
-│   ├── integration/            # Integration tests
-│   └── e2e/                    # End-to-end tests
-├── config/                     # Configuration files
-├── scripts/                    # Utility scripts
-├── docs/                       # Documentation
-├── data/                       # Sample data and schemas
-│   ├── raw/                    # Raw data samples
-│   ├── processed/              # Processed data samples
-│   └── schemas/                # Data schemas
-├── requirements.txt            # Python dependencies
-├── pyproject.toml             # Project configuration
-├── Dockerfile                 # Multi-stage Docker build
-├── docker-compose.yml         # Local development environment
-├── .env.example              # Environment variables template
-└── README.md                 # This file
+QuantStream-Analytics-Platform/
+├── src/dashboard/
+│   ├── frontend-next/           # Next.js 16 frontend
+│   │   ├── app/                 # App Router pages (16 routes)
+│   │   ├── components/          # UI components (37 files)
+│   │   │   ├── ui/              # shadcn/ui primitives
+│   │   │   ├── charts/          # Recharts wrappers
+│   │   │   ├── dashboard/       # Dashboard widgets
+│   │   │   └── layout/          # Sidebar, header
+│   │   └── lib/                 # API clients, hooks, types, store
+│   └── backend/                 # FastAPI backend
+│       ├── api/
+│       │   ├── main.py          # App entry + lifespan
+│       │   └── endpoints/       # Route handlers
+│       ├── services/
+│       │   ├── finnhub_service.py   # Finnhub + Yahoo Finance client
+│       │   ├── database_service.py  # PostgreSQL operations
+│       │   ├── redis_service.py     # Redis caching
+│       │   └── auth_service.py      # JWT auth
+│       ├── models/              # Pydantic schemas
+│       └── websocket/           # WebSocket manager
+├── Dockerfile                   # Multi-stage Docker build
+├── railway.toml                 # Railway deployment config
+├── requirements.txt             # Python dependencies
+└── .interface-design/system.md  # Design system documentation
 ```
-
-## Core Technologies
-
-### Data Processing
-- **Apache Spark**: Distributed data processing
-- **Delta Lake**: Data lake storage with ACID transactions
-- **Apache Kafka**: Real-time streaming platform
-- **Redis**: In-memory data structure store for caching and features
-
-### Machine Learning
-- **MLflow**: ML lifecycle management
-- **scikit-learn**: Machine learning algorithms
-- **XGBoost/LightGBM**: Gradient boosting frameworks
-- **Pandas/NumPy**: Data manipulation and numerical computing
-
-### Web Framework & APIs
-- **FastAPI**: Modern Python web framework
-- **Streamlit**: Interactive dashboard framework
-- **Uvicorn**: ASGI server
-- **Pydantic**: Data validation and settings management
-
-### Storage & Databases
-- **PostgreSQL**: Primary relational database
-- **MinIO**: S3-compatible object storage
-- **Redis**: Feature store and caching
-- **Delta Lake**: Data lake storage format
-
-### Monitoring & Observability
-- **Prometheus**: Metrics collection
-- **Grafana**: Metrics visualization
-- **OpenTelemetry**: Distributed tracing
-- **Structlog**: Structured logging
-
-### DevOps & Infrastructure
-- **Docker**: Containerization
-- **Terraform**: Infrastructure as Code
-- **Apache Airflow**: Workflow orchestration
-- **pytest**: Testing framework
-
-## Development
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src --cov-report=html
-
-# Run specific test categories
-pytest -m unit
-pytest -m integration
-pytest -m e2e
-```
-
-### Code Quality
-
-The project uses several tools for code quality:
-
-```bash
-# Format code
-black src/ tests/
-
-# Sort imports
-isort src/ tests/
-
-# Type checking
-mypy src/
-
-# Linting
-flake8 src/ tests/
-
-# Run all quality checks
-pre-commit run --all-files
-```
-
-### Development Workflow
-
-1. Create a feature branch
-2. Make your changes
-3. Run tests and quality checks
-4. Submit a pull request
-
-## Configuration
-
-### Environment Variables
-
-Key environment variables (see `.env.example` for full list):
-
-- `DATABASE_URL`: PostgreSQL connection string
-- `REDIS_URL`: Redis connection string
-- `KAFKA_BOOTSTRAP_SERVERS`: Kafka broker addresses
-- `MLFLOW_TRACKING_URI`: MLflow server URI
-- `S3_ENDPOINT_URL`: Object storage endpoint
-
-### Service Configuration
-
-Each service can be configured through environment variables or configuration files in the `config/` directory.
-
-## Deployment
-
-### Docker Deployment
-
-```bash
-# Build and start all services
-docker-compose up --build
-
-# Scale specific services
-docker-compose up --scale spark-worker=3
-
-# Production deployment
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-```
-
-### Cloud Deployment
-
-Use the Terraform configurations in the `infrastructure/` directory:
-
-```bash
-cd infrastructure
-terraform init
-terraform plan
-terraform apply
-```
-
-## Monitoring
-
-The platform includes comprehensive monitoring:
-
-- **Application Metrics**: Custom business metrics via Prometheus
-- **Infrastructure Metrics**: System and container metrics
-- **Distributed Tracing**: Request tracing with OpenTelemetry
-- **Logging**: Structured logging with correlation IDs
-- **Alerting**: Grafana alerts and notifications
-
-## Security
-
-Security features include:
-
-- **JWT Authentication**: Token-based authentication
-- **CORS Configuration**: Cross-origin resource sharing setup
-- **Rate Limiting**: API rate limiting and throttling
-- **Environment Isolation**: Separate configurations for different environments
-- **Secrets Management**: Secure handling of sensitive configuration
-
-## API Documentation
-
-The platform provides comprehensive API documentation:
-
-- **OpenAPI/Swagger**: Interactive API docs at `/docs`
-- **ReDoc**: Alternative API documentation at `/redoc`
-- **API Versioning**: Versioned API endpoints
-- **Authentication**: JWT-based API authentication
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-For support and questions:
-
-- Create an issue in the repository
-- Check the documentation in the `docs/` directory
-- Review the API documentation at `/docs` when running
-
-## Roadmap
-
-- [ ] Kubernetes deployment support
-- [ ] Advanced ML model serving
-- [ ] Real-time anomaly detection
-- [ ] Enhanced security features
-- [ ] Multi-tenant support
-- [ ] Advanced visualization features
-
-## Acknowledgments
-
-- Apache Spark community
-- MLflow contributors
-- FastAPI developers
-- Streamlit team
-- All open-source contributors
+MIT
