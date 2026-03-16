@@ -13,11 +13,14 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+import numpy as np
 import httpx
 import websockets
 from websockets.exceptions import ConnectionClosed
 
 logger = logging.getLogger(__name__)
+
+YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
 
 # ── Company name + sector lookup ──────────────────────────────
 COMPANY_INFO: dict[str, dict[str, str]] = {
@@ -178,110 +181,130 @@ class FinnhubService:
 
         return quote
 
-    # ── Historical candles ────────────────────────────────────
+    # ── Historical candles (Yahoo Finance — free, no key) ────
 
     async def get_candles(
         self, symbol: str, resolution: str, from_ts: int, to_ts: int
     ) -> list[dict] | None:
-        """GET /stock/candle → list of OHLCV dicts."""
-        raw = await self._cached_get(
-            f"fh:candle:{symbol}:{resolution}:{from_ts}",
-            "/stock/candle",
-            {"symbol": symbol, "resolution": resolution, "from": from_ts, "to": to_ts},
-            ttl=120,
-        )
-        if not raw or raw.get("s") != "ok":
+        """Fetch OHLCV candles via Yahoo Finance v8 chart API."""
+        interval_map = {"1": "1m", "5": "5m", "15": "15m", "60": "60m", "D": "1d", "W": "1wk", "M": "1mo"}
+        yf_interval = interval_map.get(resolution, "1d")
+        cache_key = f"yf:candle:{symbol}:{yf_interval}:{from_ts}"
+
+        if self._redis:
+            cached = await self._redis.get(cache_key)
+            if cached is not None:
+                return cached
+
+        try:
+            resp = await self._client.get(
+                f"{YAHOO_CHART_URL}/{symbol}",
+                params={"period1": from_ts, "period2": to_ts, "interval": yf_interval},
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            result = body.get("chart", {}).get("result", [])
+            if not result:
+                return None
+
+            timestamps = result[0].get("timestamp", [])
+            quote = result[0].get("indicators", {}).get("quote", [{}])[0]
+            opens = quote.get("open", [])
+            highs = quote.get("high", [])
+            lows = quote.get("low", [])
+            closes = quote.get("close", [])
+            volumes = quote.get("volume", [])
+
+            points = []
+            for i, ts in enumerate(timestamps):
+                c = closes[i]
+                if c is None:
+                    continue
+                points.append({
+                    "date": datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d"),
+                    "open": round(opens[i] or c, 2),
+                    "high": round(highs[i] or c, 2),
+                    "low": round(lows[i] or c, 2),
+                    "close": round(c, 2),
+                    "volume": int(volumes[i] or 0),
+                })
+
+            if points and self._redis:
+                await self._redis.set(cache_key, points, expire=300)
+            return points or None
+        except Exception as exc:
+            logger.error("Yahoo candle error (%s): %s", symbol, exc)
             return None
 
-        points = []
-        for i in range(len(raw["t"])):
-            points.append({
-                "date": datetime.utcfromtimestamp(raw["t"][i]).strftime("%Y-%m-%d"),
-                "open": round(raw["o"][i], 2),
-                "high": round(raw["h"][i], 2),
-                "low": round(raw["l"][i], 2),
-                "close": round(raw["c"][i], 2),
-                "volume": int(raw["v"][i]),
-            })
-        return points
-
-    # ── Technical indicators ──────────────────────────────────
+    # ── Technical indicators (computed from Yahoo candles) ────
 
     async def get_indicator(
         self, symbol: str, indicator: str, resolution: str = "D",
         from_ts: int = 0, to_ts: int = 0, timeperiod: int = 14
     ) -> dict | None:
-        """GET /indicator → technical indicator data."""
+        """Compute indicators locally from historical candle data."""
         if not from_ts:
             to_ts = int(datetime.utcnow().timestamp())
             from_ts = to_ts - 365 * 86400
 
-        return await self._cached_get(
-            f"fh:ind:{symbol}:{indicator}:{timeperiod}",
-            "/indicator",
-            {
-                "symbol": symbol,
-                "resolution": resolution,
-                "from": from_ts,
-                "to": to_ts,
-                "indicator": indicator,
-                "timeperiod": timeperiod,
-            },
-            ttl=120,
-        )
+        candles = await self.get_candles(symbol, resolution, from_ts, to_ts)
+        if not candles or len(candles) < timeperiod + 1:
+            return None
 
-    # ── Forex ─────────────────────────────────────────────────
+        closes = np.array([c["close"] for c in candles])
 
-    async def get_forex_rates(self, base: str = "USD") -> dict | None:
-        return await self._cached_get(f"fh:forex:{base}", "/forex/rates", {"base": base}, ttl=60)
+        if indicator == "rsi":
+            rsi_vals = _compute_rsi(closes, timeperiod)
+            return {"rsi": [round(v, 2) for v in rsi_vals]}
+        elif indicator == "sma":
+            sma_vals = _compute_sma(closes, timeperiod)
+            return {"sma": [round(v, 2) for v in sma_vals]}
+        elif indicator == "ema":
+            ema_vals = _compute_ema(closes, timeperiod)
+            return {"ema": [round(v, 2) for v in ema_vals]}
+        elif indicator == "macd":
+            macd, signal, hist = _compute_macd(closes)
+            return {
+                "macd": [round(v, 4) for v in macd],
+                "macdSignal": [round(v, 4) for v in signal],
+                "macdHist": [round(v, 4) for v in hist],
+            }
+        elif indicator == "bbands":
+            upper, middle, lower = _compute_bbands(closes, timeperiod)
+            return {
+                "upperband": [round(v, 2) for v in upper],
+                "middleband": [round(v, 2) for v in middle],
+                "lowerband": [round(v, 2) for v in lower],
+            }
+        return None
+
+    # ── Forex / Crypto (via Yahoo Finance symbols) ────────────
+
+    # Yahoo Finance symbols: EURUSD=X, GBPUSD=X, BTC-USD, ETH-USD
+    FOREX_YF_MAP = {
+        "OANDA:EUR_USD": "EURUSD=X",
+        "OANDA:GBP_USD": "GBPUSD=X",
+        "OANDA:USD_JPY": "USDJPY=X",
+        "OANDA:AUD_USD": "AUDUSD=X",
+    }
+    CRYPTO_YF_MAP = {
+        "BINANCE:BTCUSDT": "BTC-USD",
+        "BINANCE:ETHUSDT": "ETH-USD",
+        "BINANCE:SOLUSDT": "SOL-USD",
+    }
 
     async def get_forex_candles(
         self, symbol: str, resolution: str, from_ts: int, to_ts: int
     ) -> list[dict] | None:
-        raw = await self._cached_get(
-            f"fh:fxcandle:{symbol}:{resolution}:{from_ts}",
-            "/forex/candle",
-            {"symbol": symbol, "resolution": resolution, "from": from_ts, "to": to_ts},
-            ttl=120,
-        )
-        if not raw or raw.get("s") != "ok":
-            return None
-        return [
-            {
-                "date": datetime.utcfromtimestamp(raw["t"][i]).strftime("%Y-%m-%d"),
-                "open": round(raw["o"][i], 4),
-                "high": round(raw["h"][i], 4),
-                "low": round(raw["l"][i], 4),
-                "close": round(raw["c"][i], 4),
-                "volume": int(raw["v"][i]),
-            }
-            for i in range(len(raw["t"]))
-        ]
-
-    # ── Crypto ────────────────────────────────────────────────
+        yf_sym = self.FOREX_YF_MAP.get(symbol, symbol)
+        return await self.get_candles(yf_sym, resolution, from_ts, to_ts)
 
     async def get_crypto_candles(
         self, symbol: str, resolution: str, from_ts: int, to_ts: int
     ) -> list[dict] | None:
-        raw = await self._cached_get(
-            f"fh:ccandle:{symbol}:{resolution}:{from_ts}",
-            "/crypto/candle",
-            {"symbol": symbol, "resolution": resolution, "from": from_ts, "to": to_ts},
-            ttl=60,
-        )
-        if not raw or raw.get("s") != "ok":
-            return None
-        return [
-            {
-                "date": datetime.utcfromtimestamp(raw["t"][i]).strftime("%Y-%m-%d"),
-                "open": round(raw["o"][i], 2),
-                "high": round(raw["h"][i], 2),
-                "low": round(raw["l"][i], 2),
-                "close": round(raw["c"][i], 2),
-                "volume": int(raw["v"][i]),
-            }
-            for i in range(len(raw["t"]))
-        ]
+        yf_sym = self.CRYPTO_YF_MAP.get(symbol, symbol)
+        return await self.get_candles(yf_sym, resolution, from_ts, to_ts)
 
     # ── News ──────────────────────────────────────────────────
 
@@ -402,3 +425,49 @@ class FinnhubService:
 
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, max_backoff)
+
+
+# ── Local indicator computation (no external API needed) ──────
+
+def _compute_rsi(prices: np.ndarray, period: int = 14) -> list[float]:
+    deltas = np.diff(prices)
+    gains = np.where(deltas > 0, deltas, 0.0)
+    losses = np.where(deltas < 0, -deltas, 0.0)
+    avg_gain = np.convolve(gains, np.ones(period) / period, mode="valid")
+    avg_loss = np.convolve(losses, np.ones(period) / period, mode="valid")
+    rs = np.divide(avg_gain, avg_loss, out=np.zeros_like(avg_gain), where=avg_loss != 0)
+    rsi = 100.0 - 100.0 / (1.0 + rs)
+    return rsi.tolist()
+
+
+def _compute_sma(prices: np.ndarray, period: int) -> list[float]:
+    return np.convolve(prices, np.ones(period) / period, mode="valid").tolist()
+
+
+def _compute_ema(prices: np.ndarray, period: int) -> list[float]:
+    multiplier = 2.0 / (period + 1)
+    ema = [float(prices[0])]
+    for p in prices[1:]:
+        ema.append(float(p) * multiplier + ema[-1] * (1 - multiplier))
+    return ema
+
+
+def _compute_macd(
+    prices: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9
+) -> tuple[list[float], list[float], list[float]]:
+    ema_fast = np.array(_compute_ema(prices, fast))
+    ema_slow = np.array(_compute_ema(prices, slow))
+    macd_line = (ema_fast - ema_slow).tolist()
+    signal_line = _compute_ema(np.array(macd_line), signal)
+    histogram = [m - s for m, s in zip(macd_line, signal_line)]
+    return macd_line, signal_line, histogram
+
+
+def _compute_bbands(
+    prices: np.ndarray, period: int = 20, num_std: float = 2.0
+) -> tuple[list[float], list[float], list[float]]:
+    sma = np.convolve(prices, np.ones(period) / period, mode="valid")
+    stds = np.array([prices[i : i + period].std() for i in range(len(sma))])
+    upper = (sma + num_std * stds).tolist()
+    lower = (sma - num_std * stds).tolist()
+    return upper, sma.tolist(), lower
