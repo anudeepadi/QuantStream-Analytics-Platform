@@ -61,6 +61,8 @@ class RedisService:
             logger.info("Redis connection initialized")
 
         except Exception as e:
+            # Reset client so retry logic can detect the failed state
+            self.redis_client = None
             logger.error("Failed to initialize Redis (%s): %s", type(e).__name__, e)
             raise
     
