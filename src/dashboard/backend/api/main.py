@@ -36,37 +36,73 @@ redis_service = RedisService()
 finnhub_service = FinnhubService()
 security = HTTPBearer()
 
+async def _connect_with_retry():
+    """Background task: retry DB+Redis until both are reachable, then seed data."""
+    delay = 5
+    seeded = False
+    while True:
+        try:
+            if not db_service.pool:
+                await db_service.initialize()
+                logger.info("Database connected (retry succeeded)")
+        except Exception as e:
+            logger.warning("DB retry failed, next in %ds: %s", delay, e)
+
+        try:
+            if not redis_service.redis_client:
+                await redis_service.initialize()
+                logger.info("Redis connected (retry succeeded)")
+                # Re-initialize Finnhub with Redis now available
+                finnhub_service.redis = redis_service
+        except Exception as e:
+            logger.warning("Redis retry failed, next in %ds: %s", delay, e)
+
+        if db_service.pool and not seeded:
+            await _seed_default_users(db_service, auth_service)
+            await _seed_demo_portfolio(db_service)
+            seeded = True
+
+        if db_service.pool and redis_service.redis_client:
+            logger.info("All services connected")
+            return
+
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, 60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
     # Startup
     logger.info("Starting QuantStream Dashboard API...")
-    
-    # Initialize services — gracefully handle missing DB/Redis so healthcheck passes
-    try:
-        await db_service.initialize()
-    except Exception as e:
-        logger.warning("Database unavailable (will retry on requests): %s", e)
 
-    try:
-        await redis_service.initialize()
-    except Exception as e:
-        logger.warning("Redis unavailable (caching disabled): %s", e)
-
-    await finnhub_service.initialize(redis_service if redis_service.redis_client else None)
-
-    # Wire auth service with DB and Redis
+    # Wire service dependencies first (before any connection attempts)
     auth_service.set_services(db_service, redis_service)
     auth.set_services(auth_service, db_service)
-
-    # Inject services into endpoint modules that need them
     portfolio.set_services(db_service)
     alerts.set_services(db_service)
     market_data.set_services(finnhub_service)
 
-    # Seed default admin user and demo portfolio if no users exist
-    await _seed_default_users(db_service, auth_service)
-    await _seed_demo_portfolio(db_service)
+    # Try initial connection — non-fatal if DB/Redis not yet available
+    try:
+        await db_service.initialize()
+    except Exception as e:
+        logger.warning("Database unavailable at startup (retrying in background): %s", e)
+
+    try:
+        await redis_service.initialize()
+    except Exception as e:
+        logger.warning("Redis unavailable at startup (retrying in background): %s", e)
+
+    await finnhub_service.initialize(redis_service if redis_service.redis_client else None)
+
+    # Seed if DB connected on first try
+    if db_service.pool:
+        await _seed_default_users(db_service, auth_service)
+        await _seed_demo_portfolio(db_service)
+
+    # Background retry loop — keeps trying until all services are up
+    asyncio.create_task(_connect_with_retry())
 
     # Start background tasks — Finnhub WS feeds trade data to our WS manager
     finnhub_service.on_trade(websocket_manager.on_finnhub_trades)
