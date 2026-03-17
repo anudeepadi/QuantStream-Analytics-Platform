@@ -42,10 +42,18 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting QuantStream Dashboard API...")
     
-    # Initialize services
-    await db_service.initialize()
-    await redis_service.initialize()
-    await finnhub_service.initialize(redis_service)
+    # Initialize services — gracefully handle missing DB/Redis so healthcheck passes
+    try:
+        await db_service.initialize()
+    except Exception as e:
+        logger.warning("Database unavailable (will retry on requests): %s", e)
+
+    try:
+        await redis_service.initialize()
+    except Exception as e:
+        logger.warning("Redis unavailable (caching disabled): %s", e)
+
+    await finnhub_service.initialize(redis_service if redis_service.redis_client else None)
 
     # Wire auth service with DB and Redis
     auth_service.set_services(db_service, redis_service)
