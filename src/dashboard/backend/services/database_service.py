@@ -39,14 +39,17 @@ class DatabaseService:
     async def initialize(self):
         """Initialize database connection pool"""
         try:
+            # Railway's postgres-ssl image requires SSL; other envs tolerate it fine
+            ssl_mode = "require" if "railway.internal" in self.connection_string else None
             self.pool = await asyncio.wait_for(
                 asyncpg.create_pool(
                     self.connection_string,
                     min_size=2,
                     max_size=10,
                     command_timeout=10,
+                    ssl=ssl_mode,
                 ),
-                timeout=10,
+                timeout=15,
             )
 
             # Run initial setup
@@ -55,7 +58,7 @@ class DatabaseService:
             logger.info("Database connection pool initialized")
 
         except Exception as e:
-            logger.error("Failed to initialize database: %s", e)
+            logger.error("Failed to initialize database (%s): %s", type(e).__name__, e)
             raise
     
     async def close(self):

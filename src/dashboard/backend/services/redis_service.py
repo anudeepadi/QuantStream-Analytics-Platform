@@ -61,7 +61,7 @@ class RedisService:
             logger.info("Redis connection initialized")
 
         except Exception as e:
-            logger.error("Failed to initialize Redis: %s", e)
+            logger.error("Failed to initialize Redis (%s): %s", type(e).__name__, e)
             raise
     
     async def close(self):
