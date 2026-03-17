@@ -39,20 +39,23 @@ class DatabaseService:
     async def initialize(self):
         """Initialize database connection pool"""
         try:
-            self.pool = await asyncpg.create_pool(
-                self.connection_string,
-                min_size=5,
-                max_size=20,
-                command_timeout=60
+            self.pool = await asyncio.wait_for(
+                asyncpg.create_pool(
+                    self.connection_string,
+                    min_size=2,
+                    max_size=10,
+                    command_timeout=10,
+                ),
+                timeout=10,
             )
-            
+
             # Run initial setup
             await self._create_tables()
-            
+
             logger.info("Database connection pool initialized")
-            
+
         except Exception as e:
-            logger.error(f"Failed to initialize database: {e}")
+            logger.error("Failed to initialize database: %s", e)
             raise
     
     async def close(self):

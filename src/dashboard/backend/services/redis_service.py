@@ -47,18 +47,21 @@ class RedisService:
         """Initialize Redis connection"""
         try:
             if self.redis_url:
-                self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
+                self.redis_client = redis.from_url(
+                    self.redis_url, decode_responses=True,
+                    socket_timeout=5, socket_connect_timeout=5,
+                )
             else:
                 self.connection_pool = redis.ConnectionPool(**self.config)
                 self.redis_client = redis.Redis(connection_pool=self.connection_pool)
-            
-            # Test connection
-            await self.redis_client.ping()
-            
+
+            # Test connection with timeout
+            await asyncio.wait_for(self.redis_client.ping(), timeout=5)
+
             logger.info("Redis connection initialized")
-            
+
         except Exception as e:
-            logger.error(f"Failed to initialize Redis: {e}")
+            logger.error("Failed to initialize Redis: %s", e)
             raise
     
     async def close(self):
