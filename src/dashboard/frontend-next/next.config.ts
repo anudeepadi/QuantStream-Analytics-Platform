@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "export",
-  // Static export: no server-side rewrites. API calls go directly to the backend
-  // via NEXT_PUBLIC_API_BASE_URL (set at build time). Backend must allow CORS.
+  output: (process.env.NEXT_OUTPUT_MODE as "export" | "standalone") || "export",
+  // "export"     — static HTML for Vercel (default)
+  // "standalone" — Node.js server for Docker (set NEXT_OUTPUT_MODE=standalone)
+  // API calls go directly to the backend via NEXT_PUBLIC_API_BASE_URL (build time).
 };
 
 export default nextConfig;

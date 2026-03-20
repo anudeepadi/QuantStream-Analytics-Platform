@@ -98,7 +98,7 @@ class AuthService:
                     return cached_user
             
             # Fetch from database
-            if self.db_service:
+            if self.db_service and getattr(self.db_service, 'pool', None):
                 user_data = await self.db_service.get_user(username)
                 if user_data:
                     # Cache user data
@@ -109,8 +109,15 @@ class AuthService:
                             expire=300  # 5 minutes
                         )
                     return user_data
-            
-            return None
+
+            # Fallback to mock user lookup when DB is unavailable
+            mock_users = {
+                "admin": {"id": 1, "username": "admin", "email": "admin@quantstream.ai", "role": "administrator", "full_name": "System Administrator"},
+                "analyst": {"id": 2, "username": "analyst", "email": "analyst@quantstream.ai", "role": "analyst", "full_name": "Financial Analyst"},
+                "trader": {"id": 3, "username": "trader", "email": "trader@quantstream.ai", "role": "trader", "full_name": "Quantitative Trader"},
+                "guest": {"id": 4, "username": "guest", "email": "guest@quantstream.ai", "role": "viewer", "full_name": "Guest User"},
+            }
+            return mock_users.get(username)
             
         except jwt.ExpiredSignatureError:
             logger.warning("Token expired")
@@ -125,7 +132,7 @@ class AuthService:
     async def authenticate_user(self, username: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate user credentials"""
         try:
-            if not self.db_service:
+            if not self.db_service or not getattr(self.db_service, 'pool', None):
                 # Fallback to mock authentication for demo
                 return self._mock_authenticate(username, password)
             
